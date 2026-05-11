@@ -1,0 +1,2946 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduWorld — Twoje Miasto, Twoja Matura</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════
+     CITYMATH — CZĘŚĆ 1/3: HTML + CSS
+     OPTYMALIZACJE:
+     - Usunięto duplikat kursora (zostaje tylko 1 implementacja)
+     - backdrop-filter: blur zredukowany do max 10px
+     - Usunięto zbędne animacje CSS powielające efekty
+     - Scalono powtarzające się reguły CSS
+     ═══════════════════════════════════════════ -->
+
+<style>
+/* ── RESET & BASE ── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; cursor:none !important; }
+html, body { width:100%; height:100%; overflow:hidden; background:#01010a; font-family:'Space Grotesk',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+canvas { display:block; width:100vw !important; height:100vh !important; position:fixed; top:0; left:0; }
+
+:root {
+  --accent:#ff6b35; --gold:#ffd166; --green:#06d6a0;
+  --blue:#4cc9f0; --purple:#a78bfa; --red:#ef476f;
+}
+
+/* ── CUSTOM CURSOR (jedna implementacja) ── */
+#cur {
+  position:fixed; width:10px; height:10px; border-radius:50%;
+  background:rgba(255,107,53,0.95); box-shadow:0 0 14px rgba(255,107,53,0.7);
+  pointer-events:none; z-index:9999; transform:translate(-50%,-50%);
+  transition:width .15s, height .15s; mix-blend-mode:screen;
+  will-change:left,top;
+}
+#cur-ring {
+  position:fixed; width:34px; height:34px; border-radius:50%;
+  border:1px solid rgba(255,107,53,0.3); pointer-events:none; z-index:9998;
+  transform:translate(-50%,-50%); transition:left .1s, top .1s;
+  will-change:left,top;
+}
+
+/* ── LOADING ── */
+#loading {
+  position:fixed; inset:0; z-index:999; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; background:#01010a; gap:18px;
+  transition:opacity .8s;
+}
+#loading.fade { opacity:0; pointer-events:none; }
+.load-city { font-size:56px; animation:floatCity 3s ease-in-out infinite; }
+@keyframes floatCity { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-12px) scale(1.05)} }
+.load-title { font-size:28px; font-weight:700; color:#fff; letter-spacing:-1.5px; }
+.load-tagline { font-size:13px; color:rgba(255,255,255,0.35); letter-spacing:2px; text-transform:uppercase; }
+.load-bar-wrap { width:180px; height:2px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; }
+.load-bar { height:100%; background:linear-gradient(90deg,var(--accent),var(--gold)); animation:lb 2.5s ease-in-out infinite; }
+@keyframes lb { 0%{width:0%;margin-left:0} 60%{width:80%} 100%{width:100%} }
+
+/* ── ONBOARDING ── */
+#onboarding {
+  position:fixed; inset:0; z-index:900; display:flex; align-items:center;
+  justify-content:center; background:rgba(1,1,10,0.97);
+  /* OPTYMALIZACJA: blur 12px zamiast 20px */
+  backdrop-filter:blur(12px);
+}
+#onboarding.done { display:none; }
+.ob-card { max-width:480px; width:100%; padding:0 20px; position:relative; }
+.ob-step { display:none; animation:obIn .5s cubic-bezier(.16,1,.3,1); }
+.ob-step.active { display:block; }
+@keyframes obIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+.ob-emoji { font-size:52px; margin-bottom:16px; display:block; }
+.ob-title { font-size:26px; font-weight:700; color:#fff; letter-spacing:-1px; margin-bottom:8px; line-height:1.2; }
+.ob-body { font-size:14px; color:rgba(255,255,255,0.55); line-height:1.8; margin-bottom:28px; }
+.ob-body strong { color:rgba(255,255,255,0.85); }
+.ob-btn {
+  display:inline-flex; align-items:center; gap:8px; padding:14px 28px;
+  border-radius:14px; background:#fff; color:#01010a; font-family:'Space Grotesk',sans-serif;
+  font-size:15px; font-weight:600; border:none; cursor:pointer; transition:all .2s;
+}
+.ob-btn:hover { background:rgba(255,255,255,0.88); transform:translateY(-1px); }
+.ob-btn:active { transform:scale(0.96) !important; }
+.ob-btn.secondary { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.1); }
+.ob-dots { display:flex; gap:6px; margin-bottom:24px; }
+.ob-dot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,0.15); transition:all .3s; }
+.ob-dot.active { background:#fff; width:20px; border-radius:3px; }
+.ob-row { display:flex; gap:10px; }
+.ob-card-mini { flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:14px 16px; text-align:center; }
+.ob-card-mini .icon { font-size:22px; margin-bottom:6px; }
+.ob-card-mini .label { font-size:12px; color:rgba(255,255,255,0.5); line-height:1.5; }
+
+/* ── HUD ── */
+#hud-top {
+  position:fixed; top:0; left:0; right:0; z-index:50; padding:14px 20px;
+  display:flex; align-items:center; justify-content:space-between;
+  background:linear-gradient(180deg,rgba(1,1,10,0.92) 0%,transparent 100%);
+  pointer-events:none;
+}
+.hud-left { display:flex; align-items:center; gap:10px; }
+.hud-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 14px var(--accent); animation:hpulse 2s ease-in-out infinite; }
+@keyframes hpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.hud-title { font-size:15px; font-weight:700; color:#fff; letter-spacing:-0.5px; }
+.hud-sub { font-size:9px; color:rgba(255,255,255,0.3); letter-spacing:1px; text-transform:uppercase; }
+.hud-right { display:flex; align-items:center; gap:14px; pointer-events:auto; }
+.energy-wrap { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.energy-label { font-size:9px; color:rgba(255,255,255,0.3); letter-spacing:1px; text-transform:uppercase; }
+.energy-hearts { display:flex; gap:3px; }
+.energy-heart { font-size:14px; transition:all .3s; filter:drop-shadow(0 0 4px #ef476f); }
+.energy-heart.empty { filter:none; opacity:0.2; }
+.hud-stat { text-align:center; }
+.hud-stat-val { font-size:17px; font-weight:700; color:#fff; line-height:1; font-family:'JetBrains Mono',monospace; }
+.hud-stat-lbl { font-size:9px; color:rgba(255,255,255,0.3); letter-spacing:0.8px; text-transform:uppercase; margin-top:1px; }
+.hud-divider { width:1px; height:28px; background:rgba(255,255,255,0.08); }
+#xp-val { color:var(--gold); transition:color .3s; }
+#xp-val.flash { color:#ffd166 !important; text-shadow:0 0 12px rgba(255,209,102,0.8); }
+#missions-val { color:var(--green); }
+
+/* ── PHONE CALL ── */
+#phone-call {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%) translateY(-220px);
+  z-index:600; background:rgba(8,8,16,0.98); border:1px solid rgba(255,255,255,0.1);
+  border-radius:26px; padding:18px 22px; width:320px;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.04),0 24px 64px rgba(0,0,0,0.9);
+  transition:transform .55s cubic-bezier(.16,1,.3,1); pointer-events:none;
+  will-change:transform;
+}
+#phone-call.ringing { transform:translateX(-50%) translateY(0); pointer-events:auto; }
+.phone-ring-pulse {
+  position:absolute; inset:-6px; border-radius:32px;
+  border:1.5px solid rgba(6,214,160,0.5);
+  animation:ringPulse 1.4s ease-out infinite; pointer-events:none;
+}
+@keyframes ringPulse { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(1.06);opacity:0} }
+@keyframes pshake {
+  0%,100%{transform:translateX(-50%) translateY(0) rotate(0)}
+  20%{transform:translateX(calc(-50% - 5px)) translateY(0) rotate(-1deg)}
+  40%{transform:translateX(calc(-50% + 5px)) translateY(0) rotate(1deg)}
+  60%{transform:translateX(calc(-50% - 3px)) translateY(0) rotate(-0.5deg)}
+  80%{transform:translateX(calc(-50% + 3px)) translateY(0) rotate(0.5deg)}
+}
+.phone-shake { animation:pshake .35s ease-in-out 2; }
+.phone-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.phone-ava { width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.phone-name { font-size:15px; font-weight:700; color:#fff; margin-bottom:1px; }
+.phone-status { font-size:11px; color:rgba(255,255,255,0.4); display:flex; align-items:center; gap:4px; }
+.phone-dot-anim { width:5px; height:5px; border-radius:50%; background:var(--green); animation:hpulse 1s infinite; }
+.phone-body { font-size:13px; color:rgba(255,255,255,0.65); line-height:1.65; margin-bottom:14px; padding:10px 14px; background:rgba(255,255,255,0.04); border-radius:12px; border-left:2px solid rgba(255,255,255,0.1); }
+.phone-task-mini { background:rgba(255,209,102,0.08); border:1px solid rgba(255,209,102,0.2); border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:rgba(255,209,102,0.8); }
+.phone-actions { display:flex; gap:8px; }
+.phone-btn { flex:1; padding:10px; border-radius:12px; border:none; font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; }
+.phone-btn:active { transform:scale(0.96) !important; }
+.phone-accept { background:rgba(6,214,160,0.18); color:var(--green); border:1px solid rgba(6,214,160,0.3); }
+.phone-accept:hover { background:rgba(6,214,160,0.28); transform:translateY(-1px); }
+.phone-decline { background:rgba(239,71,111,0.12); color:var(--red); border:1px solid rgba(239,71,111,0.25); }
+.phone-decline:hover { background:rgba(239,71,111,0.2); }
+
+/* ── TOAST ── */
+#toast {
+  position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(60px);
+  z-index:500; background:rgba(8,8,16,0.97); border:1px solid rgba(255,255,255,0.1);
+  border-radius:14px; padding:10px 18px; display:flex; align-items:center; gap:10px;
+  font-size:13px; color:rgba(255,255,255,0.8); white-space:nowrap;
+  transition:transform .4s cubic-bezier(.16,1,.3,1), opacity .4s; opacity:0; pointer-events:none;
+}
+#toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+#toast-icon { font-size:16px; }
+
+/* ── XP POPUP ── */
+#xp-popup {
+  position:fixed; top:72px; right:20px; z-index:700;
+  background:rgba(255,209,102,0.1); border:1px solid rgba(255,209,102,0.3);
+  border-radius:999px; padding:7px 16px; display:none; align-items:center; gap:6px;
+  font-size:13px; font-weight:700; color:var(--gold); font-family:'JetBrains Mono',monospace;
+}
+#xp-popup.show { display:flex; animation:xpPop .4s cubic-bezier(.16,1,.3,1); }
+@keyframes xpPop { from{transform:translateY(-16px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+/* ── HINT BAR ── */
+#hint-bar {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  z-index:50; pointer-events:none; background:rgba(8,8,16,0.8);
+  border:1px solid rgba(255,255,255,0.07); border-radius:999px; padding:8px 20px;
+  opacity:1; transition:opacity .6s;
+}
+#hint-bar.gone { opacity:0; }
+.hint-text { font-size:11px; color:rgba(255,255,255,0.35); letter-spacing:.3px; }
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position:fixed; z-index:60; pointer-events:none; background:rgba(8,8,16,0.95);
+  border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:10px 14px;
+  display:none; transform:translate(-50%,-115%);
+}
+.tt-role { font-size:9px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:3px; }
+.tt-name { font-size:13px; font-weight:700; color:#fff; }
+.tt-hint { font-size:11px; color:rgba(255,255,255,0.4); margin-top:3px; }
+.tt-arrow { position:absolute; bottom:-6px; left:50%; transform:translateX(-50%); width:10px; height:6px; background:rgba(8,8,16,0.95); clip-path:polygon(0 0,100% 0,50% 100%); }
+
+/* ── CIN FLASH ── */
+#cin-flash { position:fixed; inset:0; z-index:80; pointer-events:none; background:#fff; opacity:0; transition:opacity .1s; }
+#cin-flash.flash { opacity:.12; }
+#cin-label {
+  position:fixed; bottom:70px; left:50%; transform:translateX(-50%);
+  z-index:70; pointer-events:none; display:none; flex-direction:column; align-items:center; gap:4px;
+}
+#cin-label.show { display:flex; animation:cinIn .5s cubic-bezier(.16,1,.3,1); }
+@keyframes cinIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+.cin-tag { font-size:9px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,0.3); }
+.cin-name { font-size:20px; font-weight:700; color:#fff; letter-spacing:-.5px; }
+
+/* ── MISSION OVERLAY (chat) ── */
+#mission-overlay {
+  position:fixed; inset:0; z-index:800; display:none; align-items:flex-end;
+  justify-content:center; padding:0; pointer-events:none;
+}
+#mission-overlay.open { display:flex; animation:moverlay .3s ease; }
+@keyframes moverlay { from{opacity:0} to{opacity:1} }
+
+/* OPTYMALIZACJA: blur 10px zamiast 30px */
+.mo-backdrop {
+  position:absolute; inset:0;
+  background:radial-gradient(ellipse at center,rgba(30,10,40,0.85) 0%,rgba(1,1,10,0.95) 100%);
+  backdrop-filter:blur(10px); pointer-events:none;
+}
+.mo-sheet {
+  position:relative; z-index:1; width:100%; max-width:580px; height:92vh;
+  display:flex; flex-direction:column; background:rgba(8,8,18,0.99);
+  border:1px solid rgba(255,255,255,0.09); border-radius:28px 28px 0 0;
+  box-shadow:0 -20px 80px rgba(0,0,0,0.8);
+  animation:sheetUp .45s cubic-bezier(.16,1,.3,1); pointer-events:auto;
+}
+@keyframes sheetUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
+.mo-handle { display:flex; justify-content:center; padding:12px 0 0; }
+.mo-handle-bar { width:36px; height:3px; background:rgba(255,255,255,0.15); border-radius:2px; }
+.mo-npc-strip { padding:14px 22px 0; display:flex; align-items:center; gap:14px; position:relative; }
+.mo-close {
+  position:absolute; right:16px; top:0; width:30px; height:30px; border-radius:50%;
+  background:rgba(255,255,255,0.07); border:none; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.45);
+  font-size:13px; transition:all .2s;
+}
+.mo-close:hover { background:rgba(255,255,255,0.13); color:#fff; }
+.mo-ava {
+  width:46px; height:46px; border-radius:14px; display:flex; align-items:center;
+  justify-content:center; font-size:24px; flex-shrink:0;
+  transition:box-shadow .3s cubic-bezier(.34,1.56,.64,1), transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.mo-npc-name { font-size:16px; font-weight:700; color:#fff; margin-bottom:1px; }
+.mo-npc-role { font-size:11px; color:rgba(255,255,255,0.38); letter-spacing:.3px; }
+.mo-prog-wrap { padding:12px 22px 0; }
+.mo-prog-bg { height:3px; background:rgba(255,255,255,0.07); border-radius:2px; }
+.mo-prog-fill { height:100%; border-radius:2px; transition:width .6s cubic-bezier(.16,1,.3,1); width:0%; }
+.mo-prog-label { font-size:10px; color:rgba(255,255,255,0.25); margin-top:5px; text-align:right; }
+
+/* ── CHAT BUBBLES ── */
+.mo-chat { flex:1; overflow-y:auto; padding:14px 22px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth; }
+.mo-chat::-webkit-scrollbar { width:3px; }
+.mo-chat::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+.bubble { max-width:86%; padding:11px 15px; border-radius:16px; font-size:13.5px; line-height:1.65; animation:bub .3s cubic-bezier(.16,1,.3,1); }
+@keyframes bub { from{opacity:0;transform:scale(.96) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
+.bubble.npc { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,.82); border-bottom-left-radius:4px; align-self:flex-start; }
+.bubble.player { background:rgba(255,255,255,0.09); border:1px solid rgba(255,255,255,0.13); color:#fff; border-bottom-right-radius:4px; align-self:flex-end; }
+.bubble.player.ok { background:rgba(6,214,160,0.1); border-color:rgba(6,214,160,.28); color:var(--green); }
+.bubble.player.fail { background:rgba(239,71,111,0.08); border-color:rgba(239,71,111,.22); color:var(--red); }
+.bubble.sys { background:rgba(255,209,102,0.06); border:1px solid rgba(255,209,102,.14); color:rgba(255,209,102,.75); font-size:12px; align-self:center; text-align:center; border-radius:10px; padding:7px 14px; }
+.bubble.hint-bubble { background:rgba(76,201,240,0.06); border:1px solid rgba(76,201,240,.15); color:rgba(76,201,240,.8); font-size:12px; border-radius:10px; align-self:center; text-align:center; padding:8px 14px; }
+.typing-ind { display:flex; gap:4px; align-items:center; padding:3px 0; }
+.td { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.4); animation:tb .8s ease-in-out infinite; }
+.td:nth-child(2){animation-delay:.15s;} .td:nth-child(3){animation-delay:.3s;}
+@keyframes tb { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+/* ── TASK AREA ── */
+.mo-task-area { padding:4px 22px 16px; flex-shrink:0; }
+.task-dots { display:flex; gap:5px; margin-bottom:12px; flex-wrap:wrap; }
+.tdot { width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.12); transition:all .3s; cursor:pointer; position:relative; }
+.tdot.active { background:#fff; transform:scale(1.4); }
+.tdot.active::after { content:''; position:absolute; inset:-3px; border-radius:50%; border:1.5px solid rgba(255,255,255,0.3); animation:dot-pulse 1.5s ease-in-out infinite; }
+@keyframes dot-pulse { 0%,100%{transform:scale(1);opacity:.5} 50%{transform:scale(1.3);opacity:0} }
+.tdot.ok { background:var(--green); }
+.tdot.fail { background:var(--red); }
+
+.timer-strip { height:3px; background:rgba(255,255,255,.07); border-radius:2px; margin-bottom:10px; overflow:hidden; display:none; }
+.timer-fill { height:100%; background:linear-gradient(90deg,var(--green),var(--gold),var(--red)); width:100%; transition:width .3s linear; border-radius:2px; }
+
+.type-badge { display:inline-flex; align-items:center; gap:4px; font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; padding:3px 9px; border-radius:20px; margin-bottom:10px; }
+.tb-abcd { background:rgba(255,209,102,.1); color:var(--gold); border:1px solid rgba(255,209,102,.25); }
+.tb-open { background:rgba(6,214,160,.08); color:var(--green); border:1px solid rgba(6,214,160,.2); }
+.tb-voice { background:rgba(167,139,250,.1); color:var(--purple); border:1px solid rgba(167,139,250,.25); }
+.tb-sim { background:rgba(255,107,53,.1); color:var(--accent); border:1px solid rgba(255,107,53,.3); }
+
+.choices { display:flex; flex-direction:column; gap:6px; }
+.cbtn {
+  padding:12px 15px; border-radius:12px; text-align:left;
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
+  color:rgba(255,255,255,.78); font-size:13px; font-family:'Space Grotesk',sans-serif;
+  cursor:pointer; transition:all .16s; line-height:1.5; position:relative; overflow:hidden;
+}
+.cbtn:hover:not(:disabled) { background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.16); color:#fff; transform:translateY(-1px); }
+.cbtn:active:not(:disabled) { transform:scale(0.96) !important; }
+.cbtn:disabled { cursor:default; }
+.cbtn.ok { background:rgba(6,214,160,.1); border-color:rgba(6,214,160,.35); color:var(--green); }
+.cbtn.fail { background:rgba(239,71,111,.08); border-color:rgba(239,71,111,.25); color:var(--red); }
+
+.open-inp { width:100%; padding:12px 15px; border-radius:12px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); color:#fff; font-size:14px; font-family:'JetBrains Mono',monospace; outline:none; transition:border-color .2s; margin-bottom:8px; }
+.open-inp:focus { border-color:rgba(255,107,53,.5); }
+.open-inp.ok { border-color:rgba(6,214,160,.45); background:rgba(6,214,160,.05); }
+.open-inp.fail { border-color:rgba(239,71,111,.35); background:rgba(239,71,111,.05); }
+
+/* ── VOICE ── */
+.voice-wrap { display:flex; flex-direction:column; align-items:center; gap:11px; padding:4px 0; }
+.voice-hint { background:rgba(167,139,250,.07); border:1px solid rgba(167,139,250,.16); border-radius:12px; padding:12px 15px; width:100%; }
+.vh-label { font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(167,139,250,.55); margin-bottom:4px; }
+.vh-text { font-size:12px; color:rgba(255,255,255,.62); line-height:1.6; }
+.voice-rec {
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  padding:12px 26px; border-radius:999px; border:none; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
+  transition:all .2s; min-width:200px; position:relative;
+}
+.voice-rec.idle { background:rgba(167,139,250,.12); color:var(--purple); border:1px solid rgba(167,139,250,.25); }
+.voice-rec.idle:hover { background:rgba(167,139,250,.22); transform:scale(1.02); }
+.voice-rec.rec { background:rgba(239,71,111,.18); color:var(--red); border:1px solid rgba(239,71,111,.35); animation:recpulse 1s ease-in-out infinite; }
+.voice-rec.rec::before { content:''; position:absolute; inset:-4px; border-radius:999px; border:2px solid rgba(239,71,111,.4); animation:voice-ring 1s ease-out infinite; }
+@keyframes recpulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,71,111,.25)} 50%{box-shadow:0 0 0 10px rgba(239,71,111,0)} }
+@keyframes voice-ring { from{transform:scale(1);opacity:.8} to{transform:scale(1.15);opacity:0} }
+.voice-rec.done { background:rgba(6,214,160,.1); color:var(--green); border:1px solid rgba(6,214,160,.25); cursor:default; }
+
+/* ── REWARD & BUTTONS ── */
+.reward-bar { display:none; align-items:center; gap:12px; padding:12px 15px; background:rgba(255,209,102,.06); border:1px solid rgba(255,209,102,.18); border-radius:12px; margin-top:10px; }
+.reward-bar.show { display:flex; animation:fadeUp .4s cubic-bezier(.16,1,.3,1); }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.reward-ico { font-size:22px; }
+.reward-txt { font-size:13px; color:rgba(255,255,255,.6); line-height:1.5; }
+.reward-txt strong { color:var(--gold); }
+.mo-btn { width:100%; padding:13px; border-radius:12px; border:none; font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:all .2s; margin-top:10px; letter-spacing:-.2px; }
+.mo-btn-primary { background:#fff; color:#01010a; }
+.mo-btn-primary:hover { background:rgba(255,255,255,.9); transform:translateY(-1px); }
+.mo-btn-sec { background:rgba(255,255,255,.06); color:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.09); }
+.mo-btn-sec:hover { background:rgba(255,255,255,.1); }
+@keyframes eshake { 0%,100%{transform:none} 20%,60%{transform:translateX(-4px)} 40%,80%{transform:translateX(4px)} }
+.eshake { animation:eshake .35s ease-in-out; }
+
+/* ════════════════════════════════════
+   SIM OVERLAY — fullscreen simulation
+════════════════════════════════════ */
+#sim-overlay {
+  position:fixed; inset:0; z-index:850; display:none; flex-direction:column;
+  background:#0a0a14; font-family:'Space Grotesk',sans-serif;
+}
+#sim-overlay.open { display:flex; animation:simIn .5s cubic-bezier(.16,1,.3,1); }
+@keyframes simIn { from{opacity:0;transform:scale(.98)} to{opacity:1;transform:scale(1)} }
+
+/* Scene area */
+.sim-scene { flex:1; position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+
+/* OPTYMALIZACJA: scanline tylko na silnych GPU — usunięto domyślnie */
+/* .sim-scene::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:10; } */
+
+/* Scene themes */
+.scene-apartment { background:linear-gradient(180deg,#0d0d1a 0%,#111124 60%,#0a0a16 100%); }
+.scene-market { background:linear-gradient(180deg,#05120a 0%,#081a0e 60%,#040d08 100%); }
+.scene-office { background:linear-gradient(180deg,#050d18 0%,#091524 60%,#04101e 100%); }
+.scene-stadium { background:linear-gradient(180deg,#030b05 0%,#051408 60%,#030a04 100%); }
+.scene-hospital { background:linear-gradient(180deg,#120506 0%,#1a070a 60%,#0f0405 100%); }
+.scene-school { background:linear-gradient(180deg,#0d0514 0%,#160820 60%,#0a0410 100%); }
+
+/* Particles */
+.sim-particles { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+.sp { position:absolute; border-radius:50%; animation:spFloat linear infinite; }
+@keyframes spFloat { 0%{transform:translateY(0) translateX(0);opacity:0} 20%{opacity:1} 80%{opacity:.5} 100%{transform:translateY(-120vh) translateX(30px);opacity:0} }
+
+/* Room */
+.sim-room { position:relative; width:min(680px,90vw); height:min(280px,38vh); }
+
+/* Apartment elements */
+.sim-window { position:absolute; width:180px; height:220px; background:linear-gradient(180deg,rgba(100,160,255,0.12) 0%,rgba(60,100,200,0.06) 100%); border:1px solid rgba(100,160,255,0.15); border-radius:4px 4px 0 0; overflow:hidden; }
+.sim-window::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 60px,rgba(100,160,255,0.03) 60px,rgba(100,160,255,0.03) 61px),repeating-linear-gradient(90deg,transparent,transparent 88px,rgba(100,160,255,0.04) 88px,rgba(100,160,255,0.04) 89px); }
+.sim-window-glow { position:absolute; bottom:-20px; left:50%; transform:translateX(-50%); width:220px; height:40px; background:rgba(100,160,255,0.06); border-radius:50%; filter:blur(12px); }
+.sim-couch { position:absolute; bottom:0; left:60px; width:240px; height:80px; }
+.sim-couch-body { position:absolute; bottom:0; left:0; right:0; height:55px; background:rgba(80,60,120,0.6); border:1px solid rgba(120,90,180,0.3); border-radius:8px 8px 4px 4px; }
+.sim-couch-back { position:absolute; bottom:35px; left:0; right:0; height:30px; background:rgba(90,70,130,0.7); border:1px solid rgba(130,100,190,0.3); border-radius:8px 8px 0 0; }
+.sim-couch-arm { position:absolute; bottom:0; height:55px; width:18px; background:rgba(70,50,110,0.8); border:1px solid rgba(110,80,160,0.3); border-radius:4px; }
+.sim-couch-arm.left{left:-8px;} .sim-couch-arm.right{right:-8px;}
+.sim-table { position:absolute; bottom:0; right:40px; width:100px; height:60px; }
+.sim-table-top { position:absolute; top:0; left:0; right:0; height:8px; background:rgba(160,120,60,0.5); border:1px solid rgba(200,160,80,0.3); border-radius:2px; }
+.sim-table-leg { position:absolute; bottom:0; width:6px; background:rgba(120,90,50,0.5); border-radius:2px; }
+.sim-table-leg.left{left:8px;height:52px;} .sim-table-leg.right{right:8px;height:52px;}
+.sim-laptop { position:absolute; top:10px; left:15px; width:50px; height:34px; }
+.sim-laptop-screen { width:50px; height:32px; background:rgba(60,120,220,0.5); border:1px solid rgba(80,150,255,0.4); border-radius:3px 3px 0 0; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.sim-laptop-base { width:55px; height:4px; background:rgba(60,60,80,0.8); border-radius:0 0 3px 3px; }
+.sim-floor { position:absolute; bottom:0; left:0; right:0; height:6px; background:rgba(60,50,80,0.5); border-top:1px solid rgba(100,80,140,0.2); }
+
+/* Market elements */
+.sim-shelf { position:absolute; background:rgba(20,40,20,0.7); border:1px solid rgba(40,80,40,0.4); border-radius:3px; }
+.sim-product { position:absolute; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:rgba(255,255,255,0.8); }
+.sim-price-tag { position:absolute; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; border:1px solid; }
+
+/* Stadium */
+.sim-pitch { position:absolute; bottom:0; left:0; right:0; height:120px; background:linear-gradient(0deg,rgba(10,50,15,0.9),rgba(15,70,20,0.7)); }
+.sim-pitch-line { position:absolute; border:1px solid rgba(255,255,255,0.12); }
+.sim-player { position:absolute; bottom:30px; font-size:20px; animation:playerBob 2s ease-in-out infinite; }
+@keyframes playerBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+.sim-scoreboard { position:absolute; top:8px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:6px 20px; text-align:center; }
+.sim-score-txt { font-size:22px; font-weight:800; color:#fff; font-family:'JetBrains Mono',monospace; letter-spacing:4px; }
+.sim-score-lbl { font-size:8px; color:rgba(255,255,255,0.4); letter-spacing:2px; text-transform:uppercase; }
+
+/* Hospital */
+.sim-bed { position:absolute; bottom:0; width:200px; height:80px; }
+.sim-bed-frame { position:absolute; bottom:0; left:0; right:0; height:60px; background:rgba(200,220,240,0.08); border:1px solid rgba(180,200,220,0.2); border-radius:4px; }
+.sim-bed-pillow { position:absolute; top:4px; left:8px; width:50px; height:28px; background:rgba(220,230,240,0.12); border:1px solid rgba(200,210,220,0.2); border-radius:4px; }
+.sim-patient { position:absolute; top:8px; left:55px; font-size:24px; }
+.sim-monitor { position:absolute; top:-60px; right:10px; width:70px; height:55px; background:rgba(10,20,30,0.9); border:1px solid rgba(0,200,180,0.4); border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.sim-ecg { width:60px; height:20px; overflow:hidden; position:relative; }
+.sim-ecg-line { position:absolute; left:0; top:50%; transform:translateY(-50%); animation:ecgMove 1.5s linear infinite; }
+@keyframes ecgMove { 0%{left:0} 100%{left:-80px} }
+
+/* School */
+.sim-board { position:absolute; top:20px; left:50%; transform:translateX(-50%); width:280px; height:140px; background:rgba(15,30,15,0.9); border:3px solid rgba(60,100,60,0.4); border-radius:4px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; }
+.sim-board-formula { font-family:'JetBrains Mono',monospace; font-size:14px; color:rgba(100,220,100,0.8); text-align:center; line-height:1.8; }
+.sim-student { font-size:20px; position:absolute; }
+
+/* ── SIM NARRATIVE ── */
+.sim-narrative { width:100%; max-width:680px; padding:0 20px 16px; display:flex; flex-direction:column; gap:0; }
+.sim-speaker-strip { display:flex; align-items:center; gap:12px; padding:14px 20px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px 16px 0 0; border-bottom:none; }
+.sim-speaker-ava { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.sim-speaker-name { font-size:13px; font-weight:700; color:#fff; }
+.sim-speaker-role { font-size:10px; color:rgba(255,255,255,0.35); }
+.sim-text-box { background:rgba(8,8,20,0.97); border:1px solid rgba(255,255,255,0.07); border-radius:0 0 16px 16px; padding:16px 20px 20px; min-height:80px; }
+.sim-text { font-size:14px; color:rgba(255,255,255,0.85); line-height:1.8; }
+.sim-text .hi { color:var(--gold); font-weight:600; }
+
+/* ── SIM CHOICES ── */
+.sim-choices { width:100%; max-width:680px; padding:12px 20px; display:grid; gap:8px; }
+.sim-choices.cols2 { grid-template-columns:1fr 1fr; }
+.sim-choices.cols1 { grid-template-columns:1fr; }
+.sc-btn {
+  padding:14px 18px; border-radius:14px; border:none;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.09);
+  color:rgba(255,255,255,0.82); font-family:'Space Grotesk',sans-serif;
+  font-size:13px; cursor:pointer; text-align:left; line-height:1.5;
+  transition:all .18s; display:flex; flex-direction:column; gap:4px;
+  position:relative; overflow:hidden;
+}
+.sc-btn:hover { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.18); transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,0.4); }
+.sc-btn:active:not(:disabled) { transform:scale(0.96) !important; }
+/* Shimmer efekt */
+.sc-btn::after { content:''; position:absolute; inset:0; background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.04) 50%,transparent 60%); transform:translateX(-100%); transition:transform 0.5s; border-radius:inherit; }
+.sc-btn:hover::after { transform:translateX(100%); }
+.sc-btn .sc-label { font-weight:600; font-size:14px; color:#fff; }
+.sc-btn .sc-sub { font-size:11px; color:rgba(255,255,255,0.4); }
+.sc-btn .sc-tag { font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:2px; }
+.sc-btn.outcome-ok { background:rgba(6,214,160,0.1); border-color:rgba(6,214,160,0.3); pointer-events:none; }
+.sc-btn.outcome-fail { background:rgba(239,71,111,0.08); border-color:rgba(239,71,111,0.25); pointer-events:none; }
+.sc-btn.outcome-neutral { background:rgba(255,209,102,0.06); border-color:rgba(255,209,102,0.2); pointer-events:none; }
+.sc-btn.dimmed { opacity:0.35; pointer-events:none; }
+
+/* Outcome banner */
+.sim-outcome { width:100%; max-width:680px; padding:0 20px 12px; display:none; }
+.sim-outcome.show { display:block; animation:fadeUp .4s cubic-bezier(.16,1,.3,1); }
+.outcome-banner { padding:14px 18px; border-radius:14px; display:flex; align-items:flex-start; gap:12px; }
+.outcome-banner.ok { background:rgba(6,214,160,0.07); border:1px solid rgba(6,214,160,0.2); }
+.outcome-banner.fail { background:rgba(239,71,111,0.07); border:1px solid rgba(239,71,111,0.2); }
+.outcome-banner.neutral { background:rgba(255,209,102,0.06); border:1px solid rgba(255,209,102,0.18); }
+.ob-icon { font-size:20px; flex-shrink:0; margin-top:1px; }
+.ob-body-text { font-size:13px; line-height:1.7; color:rgba(255,255,255,0.7); }
+.ob-body-text strong { color:#fff; }
+.ob-math { margin-top:6px; font-family:'JetBrains Mono',monospace; font-size:11px; color:rgba(255,255,255,0.4); padding:6px 10px; background:rgba(255,255,255,0.04); border-radius:6px; }
+
+/* Sim footer */
+.sim-footer { width:100%; max-width:680px; padding:8px 20px 20px; display:flex; gap:10px; }
+.sim-continue { flex:1; padding:13px; border-radius:12px; border:none; background:#fff; color:#01010a; font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:all .2s; }
+.sim-continue:hover { background:rgba(255,255,255,0.9); transform:translateY(-1px); }
+.sim-continue:disabled { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.3); cursor:default; transform:none; }
+.sim-exit { padding:13px 20px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.45); font-family:'Space Grotesk',sans-serif; font-size:14px; cursor:pointer; transition:all .2s; }
+.sim-exit:hover { background:rgba(255,255,255,0.09); }
+
+/* Sim step counter */
+.sim-step-bar { width:100%; max-width:680px; padding:12px 20px 0; display:flex; align-items:center; gap:10px; }
+.sim-step-dots { display:flex; gap:6px; }
+.ssd { width:28px; height:3px; border-radius:2px; background:rgba(255,255,255,0.1); transition:all .4s; }
+.ssd.done { background:rgba(6,214,160,0.7); }
+.ssd.active { background:#fff; }
+.ssd.fail { background:rgba(239,71,111,0.6); }
+.sim-step-label { font-size:10px; color:rgba(255,255,255,0.25); letter-spacing:1px; text-transform:uppercase; margin-left:auto; }
+
+/* Money tracker */
+.sim-money { position:absolute; top:16px; right:20px; background:rgba(0,0,0,0.6); border:1px solid rgba(255,209,102,0.2); border-radius:10px; padding:6px 14px; font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:var(--gold); display:none; }
+.sim-money.show { display:block; animation:fadeUp .3s; }
+
+/* ── COMBO BANNER ── */
+#combo-banner {
+  position:fixed; top:80px; left:50%; transform:translateX(-50%) translateY(-20px);
+  z-index:900; pointer-events:none; opacity:0; transition:all .4s cubic-bezier(.34,1.56,.64,1);
+  display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.85);
+  border:1px solid rgba(255,209,102,0.4); border-radius:99px; padding:8px 20px;
+  backdrop-filter:blur(8px); /* OPTYMALIZACJA: blur 8px zamiast 20px */
+}
+</style>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+</head>
+
+<body>
+
+<!-- ═══════════ CUSTOM CURSOR (jedna implementacja) ═══════════ -->
+<div id="cur"></div>
+<div id="cur-ring"></div>
+
+<!-- ═══════════ LOADING ═══════════ -->
+<div id="loading">
+  <div class="load-city">🌆</div>
+  <div class="load-title">EduWorld</div>
+  <div class="load-tagline">Twoje miasto · Twoja matura</div>
+  <div class="load-bar-wrap"><div class="load-bar"></div></div>
+</div>
+
+<!-- ═══════════ ONBOARDING ═══════════ -->
+<div id="onboarding">
+  <div class="ob-card">
+    <div class="ob-dots">
+      <div class="ob-dot active" id="od0"></div>
+      <div class="ob-dot" id="od1"></div>
+      <div class="ob-dot" id="od2"></div>
+    </div>
+    <div class="ob-step active" id="ob0">
+      <span class="ob-emoji">🎮</span>
+      <div class="ob-title">Witaj w EduWorld!</div>
+      <div class="ob-body">Jesteś świeżo upieczonym maturzystą w wielkim mieście.<br>
+      <strong>6 lokalizacji. 6 prawdziwych sytuacji z życia.</strong> Każda misja to rozmowa z prawdziwą osobą — rekruterem, szefem, lekarzem. Plus scenki z życia, tyle że z matematyką.<br><br>
+      Matematyka, której uczysz się tu — przyda Ci się jutro.</div>
+      <button class="ob-btn" onclick="obNext(1)">Dalej →</button>
+    </div>
+    <div class="ob-step" id="ob1">
+      <span class="ob-emoji">⚡</span>
+      <div class="ob-title">Jak to działa?</div>
+      <div class="ob-body">Kliknij <strong>świecący budynek</strong> żeby wejść w misję. Rozmawiasz z NPC i podejmujesz decyzje — jak w prawdziwym życiu. Niektóre sceny to <strong>interaktywne symulacje</strong> — np. urządzasz mieszkanie, robisz zakupy, negocjujesz.</div>
+      <div class="ob-row" style="margin-bottom:24px;">
+        <div class="ob-card-mini"><div class="icon">❤️</div><div class="label"><strong>3 życia</strong><br>za błędy tracisz HP</div></div>
+        <div class="ob-card-mini"><div class="icon">🎮</div><div class="label"><strong>Symulacje</strong><br>wybory życiowe<br>z konsekwencjami</div></div>
+        <div class="ob-card-mini"><div class="icon">⭐</div><div class="label"><strong>XP</strong><br>za każdą<br>dobrą decyzję</div></div>
+      </div>
+      <button class="ob-btn" onclick="obNext(2)">Rozumiem →</button>
+    </div>
+    <div class="ob-step" id="ob2">
+      <span class="ob-emoji">🔥</span>
+      <div class="ob-title">Jeden tip zanim zaczniesz</div>
+      <div class="ob-body">W symulacjach <strong>matematyka jest ukryta w wyborach</strong> — nie wiesz od razu że liczysz procent składany. Po prostu decydujesz: wziąć kredyt, zapłacić gotówką, kupić większe czy mniejsze?<br><br>Dopiero konsekwencje ujawniają liczby 😏</div>
+      <div class="ob-row">
+        <button class="ob-btn" onclick="startGame()" style="flex:1;">Zaczynam! 🚀</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CIN FX ═══════════ -->
+<div id="cin-flash"></div>
+<div id="cin-label"><div class="cin-tag" id="cin-tag"></div><div class="cin-name" id="cin-name"></div></div>
+
+<!-- ═══════════ HUD ═══════════ -->
+<div id="hud-top">
+  <div class="hud-left">
+    <div class="hud-dot"></div>
+    <div><div class="hud-title">CityMath</div><div class="hud-sub">Matura Edition</div></div>
+  </div>
+  <div class="hud-right">
+    <div class="energy-wrap">
+      <div class="energy-label">Życia</div>
+      <div class="energy-hearts" id="energy-hearts">
+        <span class="energy-heart">❤️</span>
+        <span class="energy-heart">❤️</span>
+        <span class="energy-heart">❤️</span>
+      </div>
+    </div>
+    <div class="hud-divider"></div>
+    <div class="hud-stat"><div class="hud-stat-val" id="xp-val">0</div><div class="hud-stat-lbl">XP</div></div>
+    <div class="hud-stat"><div class="hud-stat-val" id="missions-val">0/6</div><div class="hud-stat-lbl">Misje</div></div>
+  </div>
+</div>
+
+<!-- ═══════════ TOOLTIP ═══════════ -->
+<div id="tooltip">
+  <div class="tt-role" id="tt-role"></div>
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-hint" id="tt-hint"></div>
+  <div class="tt-arrow"></div>
+</div>
+
+<!-- ═══════════ MISC UI ═══════════ -->
+<div id="hint-bar"><span class="hint-text">🖱️ Kliknij świecący budynek · Przeciągnij aby obrócić · Scroll = zoom</span></div>
+<div id="xp-popup">⭐ <span id="xp-amt">+0 XP</span></div>
+<div id="toast"><span id="toast-icon">📱</span><span id="toast-text">wiadomość</span></div>
+
+<!-- ═══════════ PHONE CALL ═══════════ -->
+<div id="phone-call">
+  <div class="phone-ring-pulse"></div>
+  <div class="phone-header">
+    <div class="phone-ava" id="ph-ava">📱</div>
+    <div>
+      <div class="phone-name" id="ph-name">Nieznajomy</div>
+      <div class="phone-status"><div class="phone-dot-anim"></div><span id="ph-status">Dzwoni...</span></div>
+    </div>
+  </div>
+  <div class="phone-body" id="ph-body">...</div>
+  <div class="phone-task-mini" id="ph-task" style="display:none;"></div>
+  <div class="phone-actions">
+    <button class="phone-btn phone-accept" onclick="acceptCall()">📞 Odbierz</button>
+    <button class="phone-btn phone-decline" onclick="declineCall()">✕ Odrzuć</button>
+  </div>
+</div>
+
+<!-- ═══════════ MISSION OVERLAY ═══════════ -->
+<div id="mission-overlay">
+  <div class="mo-backdrop"></div>
+  <div class="mo-sheet" id="mo-sheet">
+    <div class="mo-handle"><div class="mo-handle-bar"></div></div>
+    <div class="mo-npc-strip">
+      <div class="mo-ava" id="mo-ava"></div>
+      <div>
+        <div class="mo-npc-name" id="mo-npc-name">—</div>
+        <div class="mo-npc-role" id="mo-npc-role">—</div>
+      </div>
+      <button class="mo-close" onclick="closeMission()">✕</button>
+    </div>
+    <div class="mo-prog-wrap">
+      <div class="mo-prog-bg"><div class="mo-prog-fill" id="mo-prog"></div></div>
+      <div class="mo-prog-label" id="mo-prog-label">0 / 4 zadań</div>
+    </div>
+    <div class="mo-chat" id="mo-chat"></div>
+    <div class="mo-task-area">
+      <div class="timer-strip" id="timer-strip"><div class="timer-fill" id="timer-fill"></div></div>
+      <div class="task-dots" id="task-dots"></div>
+      <div id="mo-task"></div>
+      <div class="reward-bar" id="reward-bar">
+        <div class="reward-ico">🏆</div>
+        <div class="reward-txt" id="reward-txt"></div>
+      </div>
+      <button class="mo-btn mo-btn-primary" id="mo-btn" style="display:none;"></button>
+      <button class="mo-btn mo-btn-sec" onclick="closeMission()" style="margin-top:8px;">Wyjdź z misji</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SIM OVERLAY ═══════════ -->
+<div id="sim-overlay"></div>
+
+<!-- ═══════════ CURSOR SCRIPT (jedna implementacja) ═══════════ -->
+<script>
+(function(){
+  const c = document.getElementById('cur');
+  const r = document.getElementById('cur-ring');
+  let raf;
+  let tx = 0, ty = 0;
+
+  document.addEventListener('mousemove', e => {
+    tx = e.clientX; ty = e.clientY;
+    c.style.left = tx + 'px';
+    c.style.top  = ty + 'px';
+    // Ring lekko opóźniony przez CSS transition — nie potrzeba RAF
+    r.style.left = tx + 'px';
+    r.style.top  = ty + 'px';
+  }, { passive: true });
+
+  document.addEventListener('mousedown', () => {
+    c.style.width = '6px'; c.style.height = '6px';
+    r.style.transform = 'translate(-50%,-50%) scale(1.6)';
+  });
+  document.addEventListener('mouseup', () => {
+    c.style.width = '10px'; c.style.height = '10px';
+    r.style.transform = 'translate(-50%,-50%) scale(1)';
+  });
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     CITYMATH — CZĘŚĆ 2/3: THREE.JS + AUDIO + SYSTEMS
+     
+     OPTYMALIZACJE:
+     - shadowMap: 4096 → 1024 (redukcja GPU o ~75%)
+     - pixelRatio: max(dPR, 2) → max(dPR, 1.5)
+     - Pętla animate() — beacony aktualizowane co 2 klatki
+     - addEventListener z { passive: true } wszędzie gdzie możliwe
+     - EXRLoader z fallbackiem — nie blokuje głównego wątku
+     - OrbitControls z ograniczoną częstotliwością update
+     - Usunięto podwójny kompresor audio (jeden masterGain wystarcza)
+     - localStorage przez requestIdleCallback zamiast setInterval
+     ═══════════════════════════════════════════════════════════ -->
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three":          "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/":  "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- ══════════════════════════════════════════════════════
+     1. WEB AUDIO ENGINE
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const AUDIO = (() => {
+  let ctx = null;
+  let masterGain = null;
+  let initialized = false;
+
+  function init() {
+    if (initialized) return;
+    initialized = true;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // OPTYMALIZACJA: jeden masterGain zamiast łańcucha kompresora per ton
+    masterGain = ctx.createGain();
+    masterGain.gain.value = 0.32;
+
+    // Jeden globalny limiter na wyjściu
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.ratio.value = 10;
+    masterGain.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    startAmbient();
+  }
+
+  function startAmbient() {
+    // Trzy warstwy drone — A1, E2, A2
+    const freqs = [55, 82.5, 110];
+    freqs.forEach((freq, i) => {
+      const osc    = ctx.createOscillator();
+      const gain   = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      osc.type           = i === 0 ? 'sawtooth' : 'sine';
+      osc.frequency.value = freq;
+      filter.type        = 'lowpass';
+      filter.frequency.value = 380 + i * 180;
+      filter.Q.value     = 1.8;
+      gain.gain.value    = 0;
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+
+      gain.gain.linearRampToValueAtTime(0.035 - i * 0.007, ctx.currentTime + 4);
+
+      // LFO
+      const lfo     = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.04 + i * 0.025;
+      lfoGain.gain.value  = 0.012;
+      lfo.connect(lfoGain);
+      lfoGain.connect(gain.gain);
+      lfo.start();
+    });
+  }
+
+  // OPTYMALIZACJA: wspólna fabryka tonów — brak kompresora per-ton
+  function tone(freq, dur, type = 'sine', vol = 0.12, delay = 0) {
+    if (!ctx) return;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type           = type;
+    osc.frequency.value = freq;
+    gain.gain.value    = 0;
+    osc.connect(gain);
+    gain.connect(masterGain);
+    const t = ctx.currentTime + delay;
+    gain.gain.linearRampToValueAtTime(vol, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+
+  function playSuccess() {
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'sine', 0.11, i * 0.075));
+    setTimeout(() => tone(1568, 0.45, 'sine', 0.07), 320);
+  }
+
+  function playFail() {
+    tone(220, 0.28, 'sawtooth', 0.07);
+    setTimeout(() => tone(196, 0.36, 'sawtooth', 0.055), 140);
+    setTimeout(() => tone(174, 0.45, 'sawtooth', 0.045), 280);
+  }
+
+  function playClick() { tone(880, 0.04, 'square', 0.035); }
+
+  function playXP() {
+    [659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.13, 'triangle', 0.09, i * 0.055));
+  }
+
+  function playMissionOpen() {
+    if (!ctx) return;
+    const osc    = ctx.createOscillator();
+    const gain   = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(80, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(420, ctx.currentTime + 0.75);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(180, ctx.currentTime);
+    filter.frequency.linearRampToValueAtTime(3800, ctx.currentTime + 0.75);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.11, ctx.currentTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.15);
+    osc.connect(filter); filter.connect(gain); gain.connect(masterGain);
+    osc.start(); osc.stop(ctx.currentTime + 1.2);
+    setTimeout(() => tone(880, 0.28, 'sine', 0.07), 680);
+  }
+
+  function playCombo(streak) {
+    const base = 440 * Math.pow(1.18, Math.min(streak - 2, 5));
+    [base, base * 1.25, base * 1.5].forEach((f, i) => tone(f, 0.18, 'triangle', 0.09, i * 0.045));
+  }
+
+  function playAchievement() {
+    [523, 659, 784, 1047, 1319, 1047, 784, 1319].forEach((f, i) =>
+      tone(f, 0.18, 'sine', 0.09, i * 0.065));
+  }
+
+  // Auto-init przy pierwszej interakcji
+  function autoInit() {
+    init();
+    document.removeEventListener('click',   autoInit);
+    document.removeEventListener('keydown', autoInit);
+    document.removeEventListener('touchstart', autoInit);
+  }
+  document.addEventListener('click',      autoInit, { once: true });
+  document.addEventListener('keydown',    autoInit, { once: true });
+  document.addEventListener('touchstart', autoInit, { once: true, passive: true });
+
+  return { init, playSuccess, playFail, playClick, playXP, playMissionOpen, playCombo, playAchievement };
+})();
+
+window.AUDIO = AUDIO;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     2. COMBO & STREAK SYSTEM
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const COMBO = (() => {
+  let streak = 0;
+  let el     = null;
+
+  function ensureEl() {
+    if (el) return;
+    el = document.createElement('div');
+    el.id = 'combo-banner';
+    document.body.appendChild(el);
+  }
+
+  function increment() {
+    streak++;
+    if (streak >= 2) show();
+    return streak;
+  }
+
+  function reset() { streak = 0; hide(); }
+
+  function show() {
+    ensureEl();
+    const mult   = Math.min(streak, 5);
+    const colors = ['', '', '#ffd166', '#ff9a3c', '#ff6b35', '#ef476f', '#a78bfa'];
+    const icon   = streak >= 5 ? '🔥' : streak >= 3 ? '⚡' : '✨';
+    el.innerHTML = `
+      <span style="font-size:18px">${icon}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${colors[mult]||'#ffd166'};font-size:14px">
+        ${streak}× COMBO
+      </span>
+      <span style="font-size:11px;color:rgba(255,255,255,.5)">×${mult} XP</span>`;
+    el.style.opacity   = '1';
+    el.style.transform = 'translateX(-50%) translateY(0) scale(1.05)';
+    setTimeout(() => { if (el) el.style.transform = 'translateX(-50%) translateY(0) scale(1)'; }, 180);
+    AUDIO.playCombo(streak);
+  }
+
+  function hide() {
+    if (!el) return;
+    el.style.opacity   = '0';
+    el.style.transform = 'translateX(-50%) translateY(-20px)';
+  }
+
+  function getMultiplier() { return Math.min(streak, 5); }
+  function getStreak()     { return streak; }
+
+  return { increment, reset, getMultiplier, getStreak };
+})();
+
+window.COMBO = COMBO;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     3. ACHIEVEMENT SYSTEM
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const ACHIEVEMENTS = (() => {
+  const unlocked = new Set();
+
+  const ALL = [
+    { id:'first_answer',  icon:'⚡', title:'Pierwsza Odpowiedź',  desc:'Odpowiedziałeś/aś na pierwsze pytanie!' },
+    { id:'first_correct', icon:'✅', title:'Celny Strzał',         desc:'Pierwsza poprawna odpowiedź!', xp:20 },
+    { id:'combo_3',       icon:'🔥', title:'W Ogniu',              desc:'Trzy poprawne z rzędu!', xp:30 },
+    { id:'combo_5',       icon:'⭐', title:'Niedościgniony',        desc:'Pięć poprawnych z rzędu!', xp:50 },
+    { id:'first_sim',     icon:'🎮', title:'Simowy Gracz',          desc:'Ukończyłeś/aś pierwszą symulację!' },
+    { id:'all_sims',      icon:'🌍', title:'Podróżnik Życia',       desc:'Ukończyłeś/aś wszystkie 6 symulacji!', xp:100 },
+    { id:'xp_100',        icon:'💯', title:'Setka XP',              desc:'100 punktów doświadczenia!', xp:25 },
+    { id:'xp_500',        icon:'🚀', title:'Pół Tysiąca',           desc:'500 XP zdobytych!', xp:50 },
+    { id:'voice_first',   icon:'🎙️', title:'Głos Rozumu',           desc:'Nagrałeś/aś pierwszą odpowiedź głosową!' },
+    { id:'phone_fraud',   icon:'🛡️', title:'Nieuchwytny',           desc:'Wykryłeś/aś phishing bankowy!' },
+    { id:'speedster',     icon:'⚡', title:'Błyskawica',            desc:'Odpowiedź w mniej niż 3 sekundy!', xp:40 },
+    { id:'graduate',      icon:'🎓', title:'Matura z Życia',        desc:'Ukończyłeś/aś wszystkie 6 misji!', xp:200 },
+  ];
+
+  // Jeden styl osiągnięcia wstrzyknięty raz
+  let styleInjected = false;
+  function injectStyle() {
+    if (styleInjected) return;
+    styleInjected = true;
+    const s = document.createElement('style');
+    s.textContent = `
+      @keyframes ach-spin { from{transform:scale(0) rotate(-180deg)} to{transform:scale(1) rotate(0)} }
+      @keyframes ach-slide-in { from{transform:translateX(-120%);opacity:0} to{transform:translateX(0);opacity:1} }
+      @keyframes ach-slide-out { from{transform:translateX(0);opacity:1} to{transform:translateX(-120%);opacity:0} }
+    `;
+    document.head.appendChild(s);
+  }
+
+  function check(id) {
+    if (unlocked.has(id)) return;
+    const ach = ALL.find(a => a.id === id);
+    if (!ach) return;
+    unlocked.add(id);
+    show(ach);
+  }
+
+  function show(ach) {
+    injectStyle();
+    AUDIO.playAchievement();
+
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position:fixed;bottom:20px;left:20px;z-index:950;
+      background:rgba(8,8,16,.98);border:1px solid rgba(255,209,102,.3);
+      border-left:3px solid #ffd166;border-radius:16px;padding:14px 18px;
+      display:flex;align-items:center;gap:12px;max-width:300px;
+      transform:translateX(-120%);
+      transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+      box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 30px rgba(255,209,102,.1);
+    `;
+    el.innerHTML = `
+      <div style="font-size:32px;animation:ach-spin .5s ease-out">${ach.icon}</div>
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,209,102,.7);margin-bottom:3px">🏆 OSIĄGNIĘCIE</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${ach.title}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:1px">${ach.desc}</div>
+        ${ach.xp ? `<div style="font-size:11px;color:#ffd166;margin-top:4px">+${ach.xp} XP</div>` : ''}
+      </div>`;
+
+    document.body.appendChild(el);
+    requestAnimationFrame(() => { el.style.transform = 'translateX(0)'; });
+    if (ach.xp && typeof window.addXP === 'function') window.addXP(ach.xp, false);
+
+    setTimeout(() => {
+      el.style.transform = 'translateX(-120%)';
+      setTimeout(() => el.remove(), 550);
+    }, 4000);
+  }
+
+  return { check, unlocked };
+})();
+
+window.ACHIEVEMENTS = ACHIEVEMENTS;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     4. NPC EMOTION SYSTEM
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const EMOTIONS = (() => {
+  const STATES = {
+    neutral:   { ring: null,                        scale: 1 },
+    happy:     { ring: 'rgba(6,214,160,.5)',         scale: 1.1 },
+    surprised: { ring: 'rgba(255,209,102,.5)',       scale: 1.15 },
+    thinking:  { ring: 'rgba(76,201,240,.4)',        scale: 1.05 },
+    sad:       { ring: 'rgba(239,71,111,.4)',        scale: 0.95 },
+    excited:   { ring: 'rgba(167,139,250,.6)',       scale: 1.2 },
+  };
+  let timer = null;
+
+  function set(state, duration = 2000) {
+    const ava = document.getElementById('mo-ava');
+    if (!ava) return;
+    const s = STATES[state];
+    if (!s) return;
+    clearTimeout(timer);
+    ava.style.boxShadow = s.ring ? `0 0 0 3px ${s.ring},0 0 20px ${s.ring}` : '';
+    ava.style.transform = `scale(${s.scale})`;
+    if (duration > 0) {
+      timer = setTimeout(() => {
+        ava.style.boxShadow = '';
+        ava.style.transform = 'scale(1)';
+      }, duration);
+    }
+  }
+
+  return { set };
+})();
+
+window.EMOTIONS = EMOTIONS;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     5. SPEED BONUS & TIMING
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+let _questionStartTime = null;
+
+function markQuestionStart() { _questionStartTime = Date.now(); }
+
+function checkSpeedBonus() {
+  if (!_questionStartTime) return 0;
+  const elapsed = (Date.now() - _questionStartTime) / 1000;
+  _questionStartTime = null;
+  if (elapsed < 3) {
+    ACHIEVEMENTS.check('speedster');
+    return 10;
+  }
+  return 0;
+}
+
+window.markQuestionStart = markQuestionStart;
+window.checkSpeedBonus   = checkSpeedBonus;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     6. ADAPTIVE HINTS
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const HINTS = (() => {
+  const failCounts = {};
+
+  function recordFail(taskId) {
+    failCounts[taskId] = (failCounts[taskId] || 0) + 1;
+    return failCounts[taskId];
+  }
+  function shouldShowHint(taskId) { return (failCounts[taskId] || 0) >= 1; }
+
+  function showHint(text) {
+    const chat = document.getElementById('mo-chat');
+    if (!chat) return;
+    const b = document.createElement('div');
+    b.className = 'bubble hint-bubble';
+    b.innerHTML = `💡 <strong>Wskazówka:</strong> ${text}`;
+    chat.appendChild(b);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  return { recordFail, shouldShowHint, showHint };
+})();
+
+window.HINTS = HINTS;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     7. REACTIVE BACKGROUND
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const REACTIVE_BG = (() => {
+  let overlay = null;
+  let fadeTimer = null;
+
+  function ensureOverlay() {
+    if (overlay) return;
+    overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .35s;';
+    const canvas = document.querySelector('canvas');
+    if (canvas) document.body.insertBefore(overlay, canvas.nextSibling);
+    else document.body.prepend(overlay);
+  }
+
+  function flash(color, dur = 400) {
+    ensureOverlay();
+    clearTimeout(fadeTimer);
+    overlay.style.background = color;
+    overlay.style.opacity    = '1';
+    fadeTimer = setTimeout(() => { overlay.style.opacity = '0'; }, dur * 0.25);
+  }
+
+  return {
+    success:     () => flash('rgba(6,214,160,.04)'),
+    fail:        () => flash('rgba(239,71,111,.07)'),
+    combo:       () => flash('rgba(255,209,102,.05)'),
+    missionOpen: () => flash('rgba(255,255,255,.03)', 600),
+  };
+})();
+
+window.REACTIVE_BG = REACTIVE_BG;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     8. POST-MISSION STATS OVERLAY
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+function showMissionStats(missionId, correctCount, totalCount, xpEarned) {
+  // Usuń poprzedni jeśli istnieje
+  document.getElementById('mission-stats-overlay')?.remove();
+
+  const pct   = Math.round(correctCount / Math.max(totalCount, 1) * 100);
+  const grade = pct >= 90 ? { label:'Celujący',      color:'#ffd166', emoji:'🌟' }
+    : pct >= 70            ? { label:'Bardzo dobry',  color:'#06d6a0', emoji:'✅' }
+    : pct >= 50            ? { label:'Dobry',          color:'#4cc9f0', emoji:'👍' }
+    :                        { label:'Dostateczny',    color:'#ff6b35', emoji:'📚' };
+
+  const r    = 54;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+
+  const el = document.createElement('div');
+  el.id = 'mission-stats-overlay';
+  el.style.cssText = `
+    position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;
+    background:rgba(1,1,10,.95);backdrop-filter:blur(10px);
+    animation:fadeIn .5s ease;
+  `;
+
+  // Wstrzyknij @keyframes raz
+  if (!document.getElementById('stats-kf')) {
+    const s = document.createElement('style');
+    s.id = 'stats-kf';
+    s.textContent = '@keyframes fadeIn{from{opacity:0}to{opacity:1}}';
+    document.head.appendChild(s);
+  }
+
+  el.innerHTML = `
+    <div style="max-width:440px;width:100%;padding:20px;text-align:center;">
+      <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:24px">PODSUMOWANIE MISJI</div>
+
+      <div style="position:relative;width:140px;height:140px;margin:0 auto 24px">
+        <svg width="140" height="140" style="transform:rotate(-90deg)">
+          <circle cx="70" cy="70" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="8"/>
+          <circle cx="70" cy="70" r="${r}" fill="none" stroke="${grade.color}"
+            stroke-width="8" stroke-linecap="round"
+            stroke-dasharray="${circ}" stroke-dashoffset="${circ}"
+            id="stats-circle" style="transition:stroke-dashoffset 1.4s cubic-bezier(.34,1,.64,1)"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:36px;font-weight:800;color:#fff;font-family:'JetBrains Mono',monospace">${pct}%</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.35)">trafność</div>
+        </div>
+      </div>
+
+      <div style="font-size:32px;margin-bottom:8px">${grade.emoji}</div>
+      <div style="font-size:24px;font-weight:800;color:${grade.color};margin-bottom:4px">${grade.label}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.4);margin-bottom:28px">${correctCount} / ${totalCount} poprawnych</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:28px">
+        ${[
+          { val:'+'+xpEarned, color:'#ffd166', lbl:'XP zdobyte' },
+          { val:COMBO.getStreak(), color:'#06d6a0', lbl:'Max combo' },
+          { val:(window._energy||0)+'/3', color:'#4cc9f0', lbl:'Życia' },
+        ].map(s => `
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:14px 8px">
+            <div style="font-size:22px;font-weight:800;color:${s.color};font-family:'JetBrains Mono',monospace">${s.val}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:1px;margin-top:2px">${s.lbl}</div>
+          </div>`).join('')}
+      </div>
+
+      <button
+        onclick="document.getElementById('mission-stats-overlay').remove();closeMission();"
+        style="width:100%;padding:14px;border-radius:14px;background:#fff;color:#01010a;
+               border:none;font-size:15px;font-weight:700;cursor:pointer;
+               font-family:'Space Grotesk',sans-serif;transition:transform .2s"
+        onmouseover="this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.transform=''">
+        Wróć do miasta →
+      </button>
+    </div>`;
+
+  document.body.appendChild(el);
+
+  // Animuj okrąg po wyrenderowaniu
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const circle = document.getElementById('stats-circle');
+      if (circle) circle.style.strokeDashoffset = String(circ - dash);
+    }, 150);
+  });
+}
+
+window.showMissionStats = showMissionStats;
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     9. PROGRESS PERSISTENCE
+     OPTYMALIZACJA: requestIdleCallback zamiast setInterval
+══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+(function initPersistence() {
+  const KEY = 'citymath_progress_v1';
+
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        xp:          window._totalXP         || 0,
+        energy:      window._energy          || 3,
+        completed:   window._completedMissions || 0,
+        achievements: [...ACHIEVEMENTS.unlocked],
+        ts:          Date.now(),
+      }));
+    } catch(e) {}
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (Date.now() - d.ts > 7 * 86400_000) return;
+      if (d.xp)        window._totalXP            = d.xp;
+      if (d.energy !== undefined) window._energy  = d.energy;
+      if (d.completed) window._completedMissions   = d.completed;
+    } catch(e) {}
+  }
+
+  // OPTYMALIZACJA: zapisuj w czasie bezczynności przeglądarki
+  function scheduleSave() {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(save, { timeout: 2000 });
+    } else {
+      save();
+    }
+  }
+
+  // Zapisuj co 45s (zamiast 30s) i przy ukryciu karty
+  setInterval(scheduleSave, 45_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) scheduleSave();
+  });
+
+  // Wczytaj po 1.2s (daj grze się zainicjować)
+  setTimeout(load, 1200);
+})();
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════
+     10. THREE.JS — CITY RENDERER
+     
+     OPTYMALIZACJE:
+     - shadowMap 1024×1024 (było 4096×4096 — 16× szybciej)
+     - pixelRatio max 1.5 (było 2)
+     - animate() — beacon loop co 2 klatki przez _frameCount
+     - addEventListener { passive:true } na mousemove
+     - EXRLoader tylko gdy WebGL2 dostępny, fallback kolor
+     - OrbitControls.update() tylko gdy potrzebne (damping)
+     - renderer.info.reset() nie wywoływany każdą klatkę
+══════════════════════════════════════════════════════ -->
+<script type="module">
+import * as THREE                from 'three';
+import { GLTFLoader }            from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls }         from 'three/addons/controls/OrbitControls.js';
+import { EXRLoader }             from 'three/addons/loaders/EXRLoader.js';
+
+/* ── globals ── */
+window.MISSIONS          = window.MISSIONS || [];
+window._beaconMeshes     = [];
+window._totalXP          = window._totalXP          || 0;
+window._completedMissions= window._completedMissions || 0;
+window._energy           = window._energy            || 3;
+
+/* ── Scene ── */
+const scene = new THREE.Scene();
+scene.fog   = new THREE.FogExp2(0x0a0a14, 0.00045);
+
+/* ── Camera ── */
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 5000);
+camera.position.set(0, 180, 420);
+
+/* ── Renderer — OPTYMALIZACJA: pixelRatio 1.5, shadow 1024 ── */
+const renderer = new THREE.WebGLRenderer({
+  antialias:        true,
+  powerPreference:  'high-performance',
+  stencil:          false,   // nie używamy stencil — oszczędność VRAM
+});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // było 2
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.55;
+renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;';
+document.body.appendChild(renderer.domElement);
+
+/* ── Sky / Environment ── */
+const isWebGL2 = renderer.capabilities.isWebGL2;
+if (isWebGL2) {
+  new EXRLoader().load('sky.exr',
+    t => {
+      t.mapping          = THREE.EquirectangularReflectionMapping;
+      scene.background   = t;
+      scene.environment  = t;
+    },
+    undefined,
+    () => { scene.background = new THREE.Color(0x0a0a14); }
+  );
+} else {
+  scene.background = new THREE.Color(0x0a0a14);
+}
+
+/* ── Lights ── */
+const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+sun.position.set(50, 120, 80);
+sun.castShadow = true;
+// OPTYMALIZACJA: 1024 zamiast 4096 — 16× mniejsza tekstura cienia
+sun.shadow.mapSize.width  = 1024;
+sun.shadow.mapSize.height = 1024;
+Object.assign(sun.shadow.camera, { near:.5, far:550, left:-130, right:130, top:130, bottom:-130 });
+sun.shadow.bias = -.0005;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x8899bb, 0x223344, .48));
+scene.add(new THREE.AmbientLight(0x222233, .75));
+
+/* ── Ground ── */
+const gnd = new THREE.Mesh(
+  new THREE.PlaneGeometry(2800, 2800),
+  new THREE.MeshStandardMaterial({ color:0x030305, roughness:.15, metalness:.8 })
+);
+gnd.rotation.x  = -Math.PI / 2;
+gnd.receiveShadow = true;
+scene.add(gnd);
+
+/* ── Controls ── */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping   = true;
+controls.dampingFactor   = .07;
+controls.rotateSpeed     = 2.2;
+controls.panSpeed        = 1.6;
+controls.zoomSpeed       = 2.2;
+controls.minDistance     = 30;
+controls.maxDistance     = 1100;
+controls.maxPolarAngle   = Math.PI / 2.05;
+
+/* ── Beacon factory ── */
+let floorY = 5;
+const beaconGroup  = new THREE.Group();
+scene.add(beaconGroup);
+const beaconMeshes = [];
+window._beaconMeshes = beaconMeshes;
+
+const FALLBACK = [
+  new THREE.Vector3(-18,0,-10), new THREE.Vector3(14,0,-8),
+  new THREE.Vector3(-6,0,18),   new THREE.Vector3(20,0,12),
+  new THREE.Vector3(-22,0,10),  new THREE.Vector3(4,0,-22),
+];
+const BCOLS = [0xffd166, 0x06d6a0, 0x4cc9f0, 0x06d6a0, 0xef476f, 0xa78bfa];
+
+function spawnBeacon(pos, mi) {
+  const col = BCOLS[mi];
+  const g   = new THREE.Group();
+  g.position.copy(pos);
+
+  // Beam
+  const bm   = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.55, side:THREE.DoubleSide, depthWrite:false });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 8, 160, 10, 1, true), bm);
+  beam.position.y = 80; g.add(beam);
+
+  // Core
+  const cm   = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:.8, side:THREE.DoubleSide, depthWrite:false });
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(.2, 1, 160, 6, 1, true), cm);
+  core.position.y = 80; g.add(core);
+
+  // Orb
+  const orb  = new THREE.Mesh(new THREE.SphereGeometry(5, 18, 18), new THREE.MeshBasicMaterial({ color:col }));
+  orb.position.y = 130; g.add(orb);
+
+  // Glow (zredukowana geometria: 16 zamiast 20 segmentów)
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(12, 16, 16), new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.35, depthWrite:false }));
+  glow.position.y = 130; g.add(glow);
+
+  // Atmosphere
+  const atmo = new THREE.Mesh(new THREE.SphereGeometry(22, 12, 12), new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.12, depthWrite:false }));
+  atmo.position.y = 130; g.add(atmo);
+
+  // Ground disc
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(28, 28), new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.28, depthWrite:false, side:THREE.DoubleSide }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = .1; g.add(disc);
+
+  // Rings (3 zamiast 4 — drobna oszczędność)
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(12 + i * 9, 14 + i * 9, 40),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:.16 - i * .04, side:THREE.DoubleSide, depthWrite:false })
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.y = .2;
+    ring.userData.ringIdx = i; g.add(ring);
+  }
+
+  // Lights
+  const l1 = new THREE.PointLight(col, 16, 280); l1.position.y = 120; g.add(l1);
+  const l2 = new THREE.PointLight(col,  8, 130); l2.position.y =  10; g.add(l2);
+
+  // Hit sphere (invisible, for raycasting)
+  const hit = new THREE.Mesh(
+    new THREE.SphereGeometry(18, 8, 8),
+    new THREE.MeshBasicMaterial({ visible:false })
+  );
+  hit.position.y = 130;
+  hit.userData.missionIdx = mi;
+  hit.userData.isBeacon   = true;
+  g.add(hit);
+
+  beaconGroup.add(g);
+  beaconMeshes.push({ group:g, orb, glow, atmo, disc, light:l1, light2:l2, beam, core, hit, missionIdx:mi, completed:false });
+}
+
+/* ── Load GLB model ── */
+new GLTFLoader().load(
+  'citymath2.glb',
+  gltf => {
+    const model = gltf.scene;
+    model.scale.set(.05, .05, .05);
+    model.traverse(n => {
+      if (n.isMesh) {
+        n.castShadow    = true;
+        n.receiveShadow = true;
+        if (n.material) {
+          n.material.roughness  = .25;
+          n.material.metalness  = .5;
+          n.material.needsUpdate = true;
+        }
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(model);
+    const c   = box.getCenter(new THREE.Vector3());
+    model.position.x -= c.x;
+    model.position.y -= box.min.y;
+    model.position.z -= c.z;
+    scene.add(model);
+
+    const box2 = new THREE.Box3().setFromObject(model);
+    floorY     = box2.max.y + 8;
+    controls.target.set(0, box2.getCenter(new THREE.Vector3()).y * .3, 0);
+
+    // Wybierz 6 meshy jako punkty zaczepienia beaconów
+    const meshes = [];
+    model.traverse(n => { if (n.isMesh) meshes.push(n); });
+    const step   = Math.max(1, Math.floor(meshes.length / 6));
+    const chosen = [];
+    for (let i = 0; i < 6 && i * step < meshes.length; i++) chosen.push(meshes[i * step]);
+    chosen.forEach((m, i) => {
+      const b = new THREE.Box3().setFromObject(m);
+      const t = new THREE.Vector3(); b.getCenter(t);
+      t.y = b.max.y;
+      spawnBeacon(t, i);
+    });
+    for (let i = chosen.length; i < 6; i++) {
+      const fb = FALLBACK[i].clone(); fb.y = 2; spawnBeacon(fb, i);
+    }
+
+    dismiss();
+  },
+  undefined,
+  () => {
+    FALLBACK.forEach((pos, i) => { const p = pos.clone(); p.y = 1; spawnBeacon(p, i); });
+    controls.target.set(0, 5, 0); floorY = 8;
+    dismiss();
+  }
+);
+
+function dismiss() {
+  const l = document.getElementById('loading');
+  if (l) { l.classList.add('fade'); setTimeout(() => l.style.display = 'none', 900); }
+  setTimeout(() => document.getElementById('hint-bar')?.classList.add('gone'), 8000);
+}
+
+/* ── Raycaster / click ── */
+const raycaster    = new THREE.Raycaster();
+const mouse        = new THREE.Vector2();
+let   hoveredBeacon = null;
+let   mouseDownPos  = null;
+
+// OPTYMALIZACJA: passive:true — nie blokuje scrollowania
+renderer.domElement.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / innerWidth)  *  2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(beaconMeshes.map(b => b.hit));
+  const tt   = document.getElementById('tooltip');
+
+  if (hits.length > 0) {
+    const mi = hits[0].object.userData.missionIdx;
+    const m  = (window.MISSIONS || [])[mi];
+    hoveredBeacon = mi;
+
+    if (m && tt) {
+      const wp = new THREE.Vector3();
+      hits[0].object.getWorldPosition(wp); wp.project(camera);
+      tt.style.left    = ((wp.x * .5 + .5) * innerWidth)  + 'px';
+      tt.style.top     = ((-.5 * wp.y + .5) * innerHeight) + 'px';
+      tt.style.display = 'block';
+      document.getElementById('tt-role').textContent  = m.npc.role;
+      document.getElementById('tt-role').style.color  = m.color;
+      document.getElementById('tt-name').textContent  = m.npc.name;
+      document.getElementById('tt-hint').innerHTML    = beaconMeshes[mi].completed ? '✓ Ukończona' : '👆 Kliknij aby wejść';
+    }
+  } else {
+    hoveredBeacon = null;
+    if (tt) tt.style.display = 'none';
+  }
+}, { passive: true });
+
+renderer.domElement.addEventListener('mousedown', e => {
+  mouseDownPos = { x: e.clientX, y: e.clientY };
+});
+
+renderer.domElement.addEventListener('mouseup', e => {
+  if (!mouseDownPos) return;
+  const dx = Math.abs(e.clientX - mouseDownPos.x);
+  const dy = Math.abs(e.clientY - mouseDownPos.y);
+  mouseDownPos = null;
+  if (dx < 5 && dy < 5 && hoveredBeacon !== null) {
+    const mi = hoveredBeacon;
+    const m  = (window.MISSIONS || [])[mi];
+    if (!m) return;
+    const flash = document.getElementById('cin-flash');
+    if (flash) { flash.classList.add('flash'); setTimeout(() => flash.classList.remove('flash'), 180); }
+    document.getElementById('cin-tag').textContent  = m.npc.role;
+    document.getElementById('cin-name').textContent = m.npc.name;
+    const lbl = document.getElementById('cin-label');
+    if (lbl) { lbl.classList.add('show'); setTimeout(() => lbl.classList.remove('show'), 1200); }
+    setTimeout(() => window.openMission && window.openMission(mi), 240);
+  }
+});
+
+/* ── Animate loop ── */
+const clock = new THREE.Clock();
+let _frameCount = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  _frameCount++;
+
+  controls.update();
+
+  // Clamp camera
+  if (camera.position.y < floorY) camera.position.y = floorY;
+  if (controls.target.y < 0)      controls.target.y = 0;
+
+  // OPTYMALIZACJA: beacon animacja co 2 klatki — niewidoczna różnica, duże oszczędności
+  if (_frameCount % 2 === 0) {
+    const t = clock.getElapsedTime();
+    beaconMeshes.forEach((b, i) => {
+      if (b.completed) {
+        // Completed beacony — statyczne wartości, bez obliczeń co klatkę
+        if (!b._dimmed) {
+          b._dimmed = true;
+          b.orb.material.opacity   = .15;
+          b.glow.material.opacity  = .03;
+          b.light.intensity        = .06;
+          b.light2.intensity       = .03;
+          b.beam.material.opacity  = .04;
+          b.core.material.opacity  = .04;
+          b.disc.material.opacity  = .03;
+        }
+        return;
+      }
+
+      const p  = .85 + .15 * Math.sin(t * 2.8 + i * 1.1);
+      b.orb.scale.setScalar(p);
+      b.glow.scale.setScalar(p * 1.2);
+      b.atmo.scale.setScalar(.9 + .1 * Math.sin(t * 1.3 + i * .7));
+      b.light.intensity  = 9  + 3.5 * Math.sin(t * 2.8 + i * 1.1);
+      b.light2.intensity = 4.5 + 1.8 * Math.sin(t * 2.8 + i * 1.1 + .5);
+      b.beam.material.opacity = .4  + .14 * Math.sin(t * 1.8 + i);
+      b.core.material.opacity = .55 + .18 * Math.sin(t * 2.8 + i * 1.1);
+      b.disc.material.opacity = .2  + .10 * Math.sin(t * 1.5 + i * .5);
+
+      b.group.children.forEach(c => {
+        if (c.userData.ringIdx !== undefined) {
+          const ri  = c.userData.ringIdx;
+          const ph  = t * .9 + ri * .5 + i * .3;
+          const sin = Math.sin(ph);
+          c.scale.setScalar(1 + (sin * .5 + .5) * .5);
+          c.material.opacity = (.16 - ri * .03) * (.35 + .65 * Math.abs(sin));
+        }
+      });
+
+      const fy = 130 + Math.sin(t * 1.5 + i * .7) * 4;
+      b.orb.position.y  = fy;
+      b.glow.position.y = fy;
+      b.atmo.position.y = fy;
+      b.hit.position.y  = fy;
+    });
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+/* ── Resize ── */
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}, { passive: true });
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     CITYMATH — CZĘŚĆ 3/3: GAME ENGINE + SIMS + MISSIONS
+     
+     OPTYMALIZACJE:
+     - Monkey-patch przez Object.defineProperty — bezpieczniejszy
+     - Brak tworzenia DOM-węzłów w każdej klatce
+     - addBubble z DocumentFragment dla batch-insercji
+     - SIM renderer — innerHTML budowany raz przez array.join('')
+     - Phone system — clearTimeout przed każdym setTimeout
+     - finishMission nie wywołuje showMissionStats synchronicznie
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════════════
+   DANE MISJI
+══════════════════════════════════════════════════════ */
+window.MISSIONS = [
+  /* 0 — BANK */
+  {
+    id:'bank', color:'#ffd166',
+    npc:{ name:'Marta Kowalska', role:'Rekruter · Bank Nowy Świat', ava:'👩‍💼', bg:'rgba(255,209,102,0.12)', outline:'#ffd166' },
+    intro:['Cześć! Cieszę się, że dotarłeś/aś na czas 😊','Jestem Marta. Prowadzę rekrutację do działu analiz.','Mam do Ciebie trzy pytania i jedną scenkę z życia. Gotowy/a?'],
+    tasks:[
+      { type:'abcd', npc:'Klientka wpłaca 4000 zł na lokatę 5% rocznie, kapitalizacja roczna. Ile dostanie po 2 latach?',
+        opts:['💬 „4400 zł — dwa razy 200 zł odsetek"','💬 „4410 zł — procent składany daje więcej w roku 2"','💬 „Około 4200 zł"','💬 „Zależy od regulaminu"'],
+        correct:1, npc_ok:'Dokładnie! 4000·1,05² = 4410 zł. Właśnie tak tłumaczę klientom.',
+        npc_fail:'Rok 1: 4200, Rok 2: 4410 zł. Procent składany działa na Twoją korzyść!', explain:'K·(1+r)ⁿ = 4000·1,05² = 4410 zł',
+        hint:'Procent składany: każdy rok liczy od nowej kwoty (kapitał + odsetki).' },
+      { type:'open', npc:'Klient wpłacił 6000 zł na 3 lata, 4% rocznie. Ile dokładnie zarobi na odsetkach?',
+        checks:['749,18','749.18','749'],
+        npc_ok:'749,18 zł! Szybko i bezbłędnie. Robię notatkę.',
+        npc_fail:'6000·1,04³ = 6749,18 → odsetki = 749,18 zł.', hint:'6000·(1,04³ − 1)' },
+      { type:'abcd', npc:'Inflacja 7% rocznie. Klient trzyma 10 000 zł "pod materacem". Po roku — ile warte w dzisiejszych złotych?',
+        opts:['💰 „9346 zł — 10000÷1,07"','💰 „9300 zł — 10000×0,93"','💰 „9700 zł — odejmuję 700"','💰 „10000 zł — gotówka nie traci"'],
+        correct:0, npc_ok:'Idealne. 10000÷1,07≈9346 zł. To argument za lokatą.',
+        npc_fail:'Realna wartość = 10000÷1,07≈9346 zł.', explain:'Realna wartość = nominalna ÷ (1+inflacja)',
+        hint:'Realna wartość = kwota ÷ (1 + stopa inflacji)' },
+      { type:'sim', simId:'apartment_budget',
+        npc:'Ostatnie — nieformalne. Wróćmy do momentu gdy dostałeś/aś pierwszą wypłatę 🎉',
+        npc_ok:'Widzę że rozumiesz pieniądze w praktyce. Właśnie takich ludzi szukamy.',
+        npc_fail:'Nauczyłeś/aś się czegoś? Te decyzje wracają co miesiąc.',
+        explain:'Budżet osobisty: dochód − stałe koszty − oszczędności = swobodne wydatki' },
+      { type:'voice', npc:'Co powiesz 60-letniemu klientowi który mówi że inflacja i tak zje zysk? Nagraj odpowiedź.',
+        voiceHint:'Realna stopa = nominalna – inflacja. Lokata chroni przed impulsywnymi wydatkami. Alternatywa to gotówka, która traci jeszcze szybciej.',
+        npc_ok:'Perfekcyjna argumentacja! Właśnie takich konsultantów szukamy.', explain:'Realna stopa zwrotu = stopa nominalna − inflacja.' }
+    ],
+    reward:'Marta wstaje i podaje rękę: <strong>„Oferta idzie wieczorem na maila. Witamy w zespole."</strong>', xp:220
+  },
+
+  /* 1 — MARKET */
+  {
+    id:'market', color:'#06d6a0',
+    npc:{ name:'Pan Ryszard', role:'Kierownik zmiany · Supermarket MAX', ava:'🧑‍💼', bg:'rgba(6,214,160,0.1)', outline:'#06d6a0' },
+    intro:['Hej, super że jesteś! Mamy za godzinę inspekcję z centrali.','Nasz kasjer zachorował a ja nie ogarniam Excela.','Cztery sprawy — dasz radę?'],
+    tasks:[
+      { type:'abcd', npc:'Ser 200g = 6,40 zł. Ser 350g z naklejką „−15% PROMOCJA" = 9,86 zł. Który tańszy za 100g?',
+        opts:['🧮 „200g tańszy — 3,20 zł/100g"','🧮 „350g tańszy — 9,86÷3,5 = 2,82 zł/100g"','🧮 „Takie same"','🧮 „Małe zawsze tańsze"'],
+        correct:1, npc_ok:'2,82 vs 3,20. Promocja uczciwa. Inspektor będzie zadowolony.',
+        npc_fail:'200g: 3,20/100g. 350g: 2,82/100g. Większy naprawdę tańszy!', explain:'Cena/100g = cena ÷ (waga_g÷100)',
+        hint:'Podziel cenę przez liczbę 100g w opakowaniu.' },
+      { type:'abcd', npc:'Jogurt 2,10 zł z naklejką „−30%". Jaka była cena bazowa?',
+        opts:['📊 „2,73 zł"','📊 „3,00 zł — 2,10÷0,70"','📊 „2,94 zł"','📊 „2,80 zł"'],
+        correct:1, npc_ok:'3,00 zł. Takie pytanie pada zawsze.',
+        npc_fail:'Cena_przed = 2,10÷0,7 = 3,00 zł.', explain:'Cena przed = cena_po ÷ (1−rabat)',
+        hint:'Cena po rabacie = cena_bazowa × (1 − rabat). Odwróć działanie.' },
+      { type:'sim', simId:'market_shopping',
+        npc:'Dobra. Symulacja typowego dnia zakupów — klient w sklepie, 3 decyzje.',
+        npc_ok:'Widzę że nie dajesz się robić w balona marketingiem. Brawo.',
+        npc_fail:'Następnym razem licz cenę za 100g przed zakupem.',
+        explain:'Zakupy świadome: cena/100g, rzeczywisty rabat, unikanie pułapek cenowych' },
+      { type:'open', npc:'Klient twierdzi że dostał za mały zwrot. Zapłacił 50 zł, kupił za 18,40 zł i 23,99 zł. Ile mu się należy?',
+        checks:['7,61','7.61'], npc_ok:'7,61 zł — szybko i bezbłędnie.',
+        npc_fail:'50 − 42,39 = 7,61 zł.', hint:'50 − 18,40 − 23,99' },
+      { type:'voice', npc:'Nagraj wyjaśnienie dla klientów dlaczego podajemy cenę jednostkową.',
+        voiceHint:'Cena za 100g/ml pozwala uczciwie porównać produkty różnych rozmiarów. Prawo UE wymaga podawania.',
+        npc_ok:'Idealne! To ląduje na tablicy przy wejściu. Zatrudniony/a!', explain:'Cena jednostkowa: porównanie jabłek do jabłek.' }
+    ],
+    reward:'Pan Ryszard: <strong>„Inspekcja zdana. Zapraszam w poniedziałek na 8:00."</strong>', xp:180
+  },
+
+  /* 2 — OFFICE */
+  {
+    id:'office', color:'#4cc9f0',
+    npc:{ name:'Tomasz Wiśniewski', role:'Dyrektor Sprzedaży · TechCorp', ava:'👨‍💻', bg:'rgba(76,201,240,0.1)', outline:'#4cc9f0' },
+    intro:['Usiądź. Mam mało czasu, od razu konkrety.','Chcesz podwyżki — rozumiem. Ale tu dostaje ją tylko ten, kto rozumie liczby.','Trzy scenariusze.'],
+    tasks:[
+      { type:'abcd', npc:'Sprzedaż: styczeń 45 000 zł, grudzień 58 500 zł. Procentowy wzrost?',
+        opts:['📊 „+30% — 13500÷45000×100%"','📊 „+23% — 13500÷58500×100%"','📊 „+13 500 zł"','📊 „+35%"'],
+        correct:0, npc_ok:'30%! Wzrost od bazy. Wklejam do prezentacji.',
+        npc_fail:'Wzrost = (nowa−stara)÷stara × 100 = 30%.', explain:'(58500−45000)÷45000 × 100% = 30%',
+        hint:'Wzrost % = (nowa − stara) ÷ stara × 100. Dzielisz przez STARĄ wartość.' },
+      { type:'sim', simId:'office_salary',
+        npc:'Pokaż mi że rozumiesz co robisz z pieniędzmi. Symulacja: dostajesz 5520 zł. Co dalej?',
+        npc_ok:'Widzę rozsądne zarządzanie finansami. Właśnie tacy są wartościowi.',
+        npc_fail:'Pieniądze to narzędzie. Naucz się nimi zarządzać.', explain:'Reguła 50/30/20: 50% koszty, 30% przyjemności, 20% oszczędności' },
+      { type:'open', npc:'Konto firmowe rośnie o 2% miesięcznie. Mamy 50 000 zł. Ile po 3 miesiącach?',
+        checks:['53060,4','53060','53 060'], npc_ok:'53 060,40 zł. Poprawny wynik.',
+        npc_fail:'50000·1,02³ = 53060,40 zł.', hint:'50000 × 1,02 × 1,02 × 1,02' },
+      { type:'voice', npc:'Uzasadnij podwyżkę. 30 sekund. Używaj liczb.',
+        voiceHint:'Wzrost sprzedaży 30%, pensja poniżej mediany rynkowej, inflacja 7% = realna obniżka.',
+        npc_ok:'Konkretne liczby, zero emocji. Podwyżka zatwierdzona.', explain:'Negocjacje: wyniki%, porównanie do rynku, wpływ inflacji.' }
+    ],
+    reward:'Tomasz: <strong>„Aneks idzie dziś do HR."</strong>', xp:200
+  },
+
+  /* 3 — STADIUM */
+  {
+    id:'stadium', color:'#06d6a0',
+    npc:{ name:'Marek Dąbrowski', role:'Trener Główny · FC Miasto', ava:'⚽', bg:'rgba(6,214,160,0.1)', outline:'#06d6a0' },
+    intro:['Hej! Potrzebuję analityka — tu i teraz.','Za 2 godziny mecz o awans. Cztery pytania.'],
+    tasks:[
+      { type:'abcd', npc:'Piotr trafia karnego z P=0,8. Musi trafić dwa z rzędu. Jaka szansa?',
+        opts:['⚽ „0,64 — 0,8×0,8"','⚽ „0,80 — szansa nie zmienia się"','⚽ „1,60 — sumujemy"','⚽ „0,16"'],
+        correct:0, npc_ok:'0,64! P(A)·P(B) = 0,64. Dlatego trzymam Piotra na ostatni rzut.',
+        npc_fail:'Niezależne: P(A i B) = 0,8·0,8 = 0,64.', explain:'P(dwa trafienia) = 0,8 × 0,8 = 0,64',
+        hint:'Zdarzenia niezależne: mnożymy prawdopodobieństwa.' },
+      { type:'sim', simId:'stadium_tactics',
+        npc:'10 minut do końca, przegrywamy 0:1. Podejmujesz decyzje taktyczne.',
+        npc_ok:'Dobre decyzje w stresie. Właśnie tego szukam w sztabie.',
+        npc_fail:'W taktyce jak w matematyce — trzeba liczyć ryzyko.', explain:'Ryzyko = P(porażki po zmianie) vs P(porażki bez zmiany)' },
+      { type:'open', npc:'Napastniczka strzeliła 17 goli w 22 meczach. Skuteczność do jednego miejsca po przecinku?',
+        checks:['77,3','77.3'], npc_ok:'77,3%! Wysyłam sponsorowi.',
+        npc_fail:'17÷22×100 ≈ 77,3%.', hint:'(17÷22)×100' },
+      { type:'voice', npc:'Przed meczem — zmotywuj drużynę statystykami. 45 sekund.',
+        voiceHint:'Skuteczność karna (64%), napastniczka (77%), przewaga sezonu.',
+        npc_ok:'Świetna narracja! Wchodzisz do sztabu.', explain:'Przemówienie: liczby + porównanie do rywala + pewność.' }
+    ],
+    reward:'Trener: <strong>„Jesteś w sztabie. Mecz za 2 godziny!"</strong>', xp:210
+  },
+
+  /* 4 — HOSPITAL */
+  {
+    id:'hospital', color:'#ef476f',
+    npc:{ name:'Dr Anna Nowak', role:'Ordynator · Szpital Miejski', ava:'👩‍⚕️', bg:'rgba(239,71,111,0.1)', outline:'#ef476f' },
+    intro:['Mam za 8 minut obchód. Farmaceuta na zwolnieniu.','Błąd tutaj kosztuje życie. Skupiamy się.'],
+    tasks:[
+      { type:'abcd', npc:'Pan Kowalski, 72 kg. Ibuprofen — 0,5 mg/kg. Ile mg wpisuję do karty?',
+        opts:['💊 „36 mg"','💊 „360 mg"','💊 „0,036 mg"','💊 „7,2 mg"'],
+        correct:0, npc_ok:'36 mg. Prosto i bez błędu.',
+        npc_fail:'72 × 0,5 = 36 mg.', explain:'dawka = waga × dawka_na_kg = 72 × 0,5 = 36 mg',
+        hint:'dawka [mg] = masa ciała [kg] × dawka jednostkowa [mg/kg]' },
+      { type:'abcd', npc:'Ampułka 4 mg/ml. Potrzebuję podać 36 mg. Ile ml?',
+        opts:['💉 „9 ml — 36÷4"','💉 „36 ml"','💉 „4 ml"','💉 „144 ml"'],
+        correct:0, npc_ok:'9 ml. Szybko.',
+        npc_fail:'V = dawka÷stężenie = 36÷4 = 9 ml.', explain:'ml = mg ÷ (mg/ml)',
+        hint:'objętość = dawka ÷ stężenie' },
+      { type:'sim', simId:'hospital_patient',
+        npc:'Sytuacja przy łóżku pacjenta. Musisz podjąć kilka decyzji. Liczy się każda sekunda.',
+        npc_ok:'Spokój i precyzja pod presją. Mamy dla Ciebie etat.',
+        npc_fail:'W medycynie każdy błąd ma konsekwencje. Ćwicz spokój.', explain:'Protokół medyczny: dawka, czas, obserwacja — każdy krok weryfikowany' },
+      { type:'open', npc:'Podajemy lek 3×dziennie przez 7 dni. Ile mg łącznie potrzebuję zamówić?',
+        checks:['756','756 mg'], npc_ok:'756 mg. Zamówiłam.',
+        npc_fail:'3×7×36 = 756 mg.', hint:'3 × 7 × 36' },
+      { type:'voice', npc:'Pani Janina pyta dlaczego jej dawka jest inna niż pana Kowalskiego. Wytłumacz jej.',
+        voiceHint:'Dawka/kg = każde ciało jest inne. Większa osoba potrzebuje więcej.',
+        npc_ok:'Idealne. Pani Janina jest spokojniejsza.', explain:'Farmakokinetyka: większa masa = większa objętość dystrybucji.' }
+    ],
+    reward:'Dr Nowak: <strong>„Pacjent bezpieczny. Mamy dla Ciebie etat stażysty."</strong>', xp:230
+  },
+
+  /* 5 — SCHOOL */
+  {
+    id:'school', color:'#a78bfa',
+    npc:{ name:'Prof. Zofia Kamińska', role:'Komisja Egzaminacyjna · Olimpiada', ava:'👩‍🏫', bg:'rgba(167,139,250,0.12)', outline:'#a78bfa' },
+    intro:['Dzień dobry. Proszę usiąść i wyciszyć telefon.','Komisja ocenia nie tylko wynik, ale sposób rozumowania.','Cztery pytania. Stypendium 5000 zł. Zaczynamy.'],
+    tasks:[
+      { type:'abcd', npc:'f(x) = 2x² − 8x + 6. Wyznacz x wierzchołka.',
+        opts:['📐 „x=2, x_w=−b÷(2a)=8÷4=2"','📐 „x=4"','📐 „x=−2"','📐 „x=3"'],
+        correct:0, npc_ok:'x_w = 8÷4 = 2. Wzór z uzasadnieniem — komisja docenia.',
+        npc_fail:'x_w = −(−8)÷(2·2) = 8÷4 = 2.', explain:'x_w = −b÷(2a)',
+        hint:'Wzór na wierzchołek: x_w = −b ÷ (2a). Uważaj na znak b!' },
+      { type:'abcd', npc:'Oblicz f(2) dla tej funkcji.',
+        opts:['📐 „−2 — to minimum paraboli"','📐 „0 — wierzchołek na osi OX"','📐 „2"','📐 „−6"'],
+        correct:0, npc_ok:'f(2)=−2. 8−16+6=−2. Minimum.',
+        npc_fail:'2·4−8·2+6 = 8−16+6 = −2.', explain:'Podstaw x=2: 2·4−8·2+6=−2',
+        hint:'Wstaw x=2 do wzoru i oblicz krok po kroku.' },
+      { type:'sim', simId:'school_exam',
+        npc:'Symulacja: jesteś architektem. Pokaż komisji że rozumiesz temat z życia.',
+        npc_ok:'Komisja jest pod wrażeniem. Widzisz matematykę w przestrzeni.',
+        npc_fail:'Funkcja kwadratowa otacza nas zewsząd — ćwicz intuicję.', explain:'Parabola w architekturze: łuki, kable mostów, tory rzutów' },
+      { type:'open', npc:'Miejsca zerowe g(x) = x²−5x+6. Oba pierwiastki — mniejszy najpierw.',
+        checks:['2 i 3','2,3','2 3'], npc_ok:'x₁=2, x₂=3. Δ=1. Bezbłędnie.',
+        npc_fail:'Δ=1. x=(5±1)÷2. x₁=2, x₂=3.', hint:'Δ=b²−4ac, potem x=(−b±√Δ)÷(2a)' },
+      { type:'voice', npc:'Pytanie ustne — wyjaśnij czym jest wierzchołek paraboli i co mówi znak a.',
+        voiceHint:'a>0: minimum, "uśmiechnięta". a<0: maksimum, "smutna". Oś symetrii: x=−b÷(2a).',
+        npc_ok:'Laureaci mówią właśnie tak.', explain:'a>0 → min. a<0 → max. Wierzchołek = (x_w, f(x_w))' }
+    ],
+    reward:'Prof. Kamińska: <strong>„Najwyższy wynik. Stypendium przyznane."</strong> 🎓', xp:260
+  }
+];
+
+
+/* ══════════════════════════════════════════════════════
+   DANE SYMULACJI
+══════════════════════════════════════════════════════ */
+const SIMS = {
+
+/* ── SIM 1: APARTMENT BUDGET ── */
+apartment_budget: {
+  title:'Pierwsza Wypłata 🎉', subtitle:'Masz 3000 zł na koncie. Co teraz?',
+  scene:'apartment', money:3000, accentColor:'#a78bfa',
+  steps:[
+    {
+      speaker:{ name:'Ty', role:'Twoje myśli', ava:'🙂', bg:'rgba(167,139,250,0.15)' },
+      text:'Właśnie wpłynęło <span class="hi">3000 zł</span> — pierwsza prawdziwa wypłata. Wynajmuję kawalerkę za 1200 zł. Teraz muszę zdecydować co dalej.',
+      choices:[
+        { label:'Najpierw odłożę 20% na czarną godzinę', sub:'600 zł na konto oszczędnościowe', tag:'🏦 MĄDRY WYBÓR',
+          effect:{ money:-600 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Świetna decyzja!</strong> 600 zł trafia na konto. To reguła 20% — oszczędzaj zanim wydasz, nie z reszty.', math:'3000 × 20% = 600 zł oszczędności. Zostaje 2400 zł.' }},
+        { label:'Kupię nowy telefon — zasługuję', sub:'Ratalna 150 zł/mies przez 18 mies = 2700 zł', tag:'📱 POCHOPNY',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'⚠️', text:'<strong>Uwaga na raty!</strong> 150 zł × 18 = 2700 zł — zapłacisz <strong>12,5% więcej</strong> niż cena gotówkowa (2400 zł).', math:'2700 ÷ 2400 = 1,125 → płacisz 12,5% drożej za wygodę.' }},
+        { label:'Zapłacę czynsz i zapomnę o reszcie', sub:'Bez planu, bez oszczędności', tag:'😅 RYZYKOWNE',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Czynsz opłacony. Ale bez planu budżetu — za 3 tygodnie zostaniesz na lodzie.', math:'1200 + wydatki = ? Brak kontroli = brak oszczędności.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Ty', role:'Sobota, centrum handlowe', ava:'🛍️', bg:'rgba(255,107,53,0.15)' },
+      text:'W sklepie widzisz kurtkę za 399 zł — <strong>„−30% TYLKO DZIŚ"</strong>. Cena po rabacie: 279 zł.',
+      choices:[
+        { label:'Kupuję! To świetna okazja — oszczędzam 171 zł', sub:'Płacę 279 zł (30% taniej)', tag:'🧥 OKAZJA?',
+          effect:{ money:-279 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Kupiłeś/aś kurtkę za 279 zł. <strong>Ale czy potrzebowałeś/aś jej?</strong> "Oszczędzam kupując" to marketingowy mit.', math:'Prawdziwa oszczędność = nie kupić = 279 zł więcej w kieszeni.' }},
+        { label:'Sprawdzam czy cena była wcześniej naprawdę 399 zł', sub:'Szukam na telefonie historii cen', tag:'🔍 MĄDRZE',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Brawo!</strong> Kurtka kosztowała 299 zł przez ostatnie 6 miesięcy. Dziś "promocja" = normalna cena.', math:'Prawdziwy rabat = (cena_ref − cena_prom) ÷ cena_ref × 100%.' }},
+        { label:'Nie kupuję, nie planowałem/am tego wydatku', sub:'Wychodzę ze sklepu', tag:'💪 DYSCYPLINA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Perfekcyjnie!</strong> Impulsy kosztują Polaków średnio 400 zł miesięcznie.', math:'400 zł/mies × 12 = 4800 zł rocznie na impulsach. Każde "nie" ma wartość!' }},
+      ]
+    },
+    {
+      speaker:{ name:'Kalkulator budżetu', role:'Koniec miesiąca', ava:'📊', bg:'rgba(255,209,102,0.15)' },
+      text:'Minął miesiąc. Czynsz 1200 zł, jedzenie 600 zł, transport 200 zł. Co z nadwyżką?',
+      choices:[
+        { label:'Przelew na lokatę 3% rocznie — cały nadmiar', sub:'Niech pracują na siebie', tag:'📈 INWESTUJĘ',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Idealne myślenie!</strong> Nawyk oszczędzania jest bezcenny.', math:'Kapitalizacja: 200 × (1,03 − 1) = 6 zł. Po 10 latach: 200 × ((1,03)¹⁰−1)÷0,03 ≈ 2300 zł.' }},
+        { label:'Wyjazd weekendowy — zasługuję na odpoczynek', sub:'Wydaję wszystko co zostało', tag:'🏖️ ODPOCZYNEK',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Odpoczynek jest ważny. Ale <strong>zero oszczędności</strong> = zero poduszki finansowej.', math:'Reguła: najpierw odłóż, potem wydaj resztę. Nie odwrotnie.' }},
+        { label:'Nadpłacam kartę kredytową', sub:'Redukuję dług o wyższe oprocentowanie', tag:'💳 SMART',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Znakomicie!</strong> Karta 20% RRSO to drogi dług. Każda nadpłata = oszczędność 20% odsetek.', math:'Limit 1000 zł × 20% = 200 zł odsetek/rok. Nadpłata eliminuje ten koszt.' }},
+      ]
+    }
+  ]
+},
+
+/* ── SIM 2: MARKET SHOPPING ── */
+market_shopping: {
+  title:'Tygodniowe Zakupy 🛒', subtitle:'Masz 150 zł na tygodniowe zakupy dla dwóch osób',
+  scene:'market', money:150, accentColor:'#06d6a0',
+  steps:[
+    {
+      speaker:{ name:'Ty', role:'Wejście do supermarketu', ava:'🛒', bg:'rgba(6,214,160,0.15)' },
+      text:'Przy wejściu stoisko: <strong>„Trzy jogurty za cenę dwóch!"</strong> Normalnie 2,50 zł/szt. Kupujesz jeden i tak.',
+      choices:[
+        { label:'Kupuję 3! Oszczędzam jeden jogurt gratis', sub:'Płacę 5 zł zamiast 7,50 zł', tag:'💰 PROMOCJA',
+          effect:{ money:-5 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'<strong>Promocja uczciwa — ale czy zjesz 3 jogurty?</strong> "Gratis" ma sens tylko gdy rzeczywiście potrzebujesz.', math:'Oszczędzasz 2,50 zł. Ale jeśli 2 się zmarnują: bilans −2,50 zł.' }},
+        { label:'Biorę 1 jogurt — tyle ile potrzebuję', sub:'Płacę 2,50 zł', tag:'🎯 PRECYZYJNIE',
+          effect:{ money:-2.5 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Idealnie!</strong> Marnowanie jedzenia kosztuje Polaków śr. 2600 zł/rok.', math:'Budżet chroniony. Kupujesz tyle ile potrzebujesz.' }},
+        { label:'Omijam promocje — zawsze wciągają', sub:'Idę prosto do listy zakupów', tag:'🚶 LISTA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Mądra zasada!</strong> Trzymanie się listy oszczędza śr. 30–40% kosztu zakupów.', math:'Sklepy projektują promocje by zwiększyć koszyk — nie twój budżet.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Półka z makaronem', role:'Środek sklepu', ava:'🍝', bg:'rgba(255,209,102,0.12)' },
+      text:'Makaron: <strong>A)</strong> 400g = 3,20 zł &nbsp; <strong>B)</strong> 1kg markowy = 7,80 zł &nbsp; <strong>C)</strong> 1kg własna marka = 4,20 zł',
+      choices:[
+        { label:'Opcja A — najtańsza cena na metce (3,20 zł)', sub:'Ale czy to najtańszy za 100g?', tag:'👀 POZORY',
+          effect:{ money:-3.2 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Pułapka cenowa!</strong> A: 0,80 zł/100g. C: 0,42 zł/100g. Opcja A jest prawie 2× droższa!', math:'A: 3,20÷4=0,80 | B: 7,80÷10=0,78 | C: 4,20÷10=0,42 zł/100g' }},
+        { label:'Opcja B — markowy, na pewno lepszy', sub:'7,80 zł / 1kg = 0,78 zł/100g', tag:'🏷️ MARKA',
+          effect:{ money:-7.8 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Prawie dobrze — liczyłeś/aś cenę jednostkową. Ale marka to marketing. C jest o 47% tańsza.', math:'B: 0,78 zł/100g | C: 0,42 zł/100g. Różnica: 3,60 zł.' }},
+        { label:'Opcja C — przeliczam cenę za 100g', sub:'4,20÷10 = 0,42 zł/100g', tag:'🧮 SMART',
+          effect:{ money:-4.2 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Perfekcyjnie!</strong> Zawsze licz cenę jednostkową. Oszczędzasz ~3,80 zł tylko na makaronie.', math:'0,80 − 0,42 = 0,38 zł/100g × 10 = 3,80 zł oszczędności.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Kasa', role:'Przy wyjściu', ava:'💳', bg:'rgba(255,107,53,0.15)' },
+      text:'Koszyk wyszedł <span class="hi">na ok. 120 zł</span> z <span class="hi">150 zł budżetu</span>. Zostało 30 zł.',
+      choices:[
+        { label:'Mam kartę lojalnościową — 2000 pkt = bon 20 zł', sub:'Używam bonu na kolejne zakupy', tag:'🎁 PUNKTY',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dobre zarządzanie!</strong> 2000 pkt × 0,01 zł/pkt = 20 zł bonu = 2% cashback.', math:'Na produkty których i tak kupisz = czysty zysk.' }},
+        { label:'Dodam do koszyka coś jeszcze za te 30 zł', sub:'Idę po coś dodatkowego', tag:'🛒 IMPULS',
+          effect:{ money:-30 }, score:0,
+          outcome:{ type:'fail', icon:'⚠️', text:'<strong>Klasyczny błąd!</strong> "Zostało mi" → zakupy impulsowe. Jeden z głównych powodów przekraczania budżetu.', math:'Reszta budżetu zakupowego NIE JEST zaproszeniem do wydania go do zera.' }},
+        { label:'Płacę i wychodzę — trzymam się planu', sub:'Zostaje 30 zł w portfelu', tag:'✅ PLAN',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dyscyplina!</strong> 30 zł reszty = poduszka finansowa tygodnia.', math:'Budżet: 150 zł. Wydane: 120 zł. Oszczędność: 30 zł = 20% budżetu.' }},
+      ]
+    }
+  ]
+},
+
+/* ── SIM 3: OFFICE SALARY ── */
+office_salary: {
+  title:'Co Zrobisz z Podwyżką? 💰', subtitle:'Dostałeś/aś 5520 zł — o 720 zł więcej niż dotąd',
+  scene:'office', money:5520, accentColor:'#4cc9f0',
+  steps:[
+    {
+      speaker:{ name:'Ty', role:'Myśli w windzie po rozmowie', ava:'😎', bg:'rgba(76,201,240,0.15)' },
+      text:'<span class="hi">+720 zł miesięcznie!</span> Pierwsza myśl: co z tym zrobię?',
+      choices:[
+        { label:'Utrzymuję dotychczasowy styl życia — całe 720 zł na oszczędności', sub:'Nie zmieniam nic — "lifestyle creep" mnie nie dotyczy', tag:'🎯 IDEALNIE',
+          effect:{ money:720 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Złota zasada!</strong> Lifestyle creep = wydatki rosną z dochodem. Zatrzymujesz 720 × 12 = <strong>8640 zł/rok</strong>.', math:'Przy 5% lokacie: 8640 × 1,05 = 9072 zł po roku.' }},
+        { label:'Trochę lepsze mieszkanie — +400 zł za metraż', sub:'+400 zł czynszu miesięcznie', tag:'🏠 STANDARD',
+          effect:{ money:-400 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Lepsze mieszkanie = komfort. Ale +400 zł × 12 = <strong>4800 zł/rok</strong> bez zwrotu.', math:'720 − 400 = 320 zł wolnych. Koszt komfortu: 4800 zł/rok.' }},
+        { label:'W końcu nowe auto na kredyt — 800 zł/mies', sub:'Rata leasingowa 800 zł × 48 mies', tag:'🚗 KREDYT',
+          effect:{ money:-800 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Pułapka!</strong> Rata 800 zł > podwyżka 720 zł. Musisz dokładać ze starej wypłaty.', math:'48 × 800 = 38 400 zł za auto wartości ~30 000 zł. Przepłacasz 28%.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Doradca finansowy', role:'Spotkanie w banku', ava:'👨‍💼', bg:'rgba(255,209,102,0.15)' },
+      text:'Doradca oferuje Ci trzy opcje dla <span class="hi">Twoich 720 zł/mies</span>:',
+      choices:[
+        { label:'Lokata 5% rocznie — wiem co dostaję', sub:'Gwarantowane, bezpieczne', tag:'🏦 BEZPIECZNE',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Solidny wybór!</strong> 8640 × 1,05 = <strong>9072 zł</strong>. Pewne 432 zł odsetek.', math:'8640 × 0,05 = 432 zł odsetek. Realna stopa: 5% − 7% inflacja = −2% (lepsza niż 0%!)' }},
+        { label:'ETF na S&P500 — długoterminowo', sub:'Hist. średnia ~8% rocznie', tag:'📈 INWESTYCJA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Mądrze!</strong> Długoterminowo (10+ lat) indeksowe ETF biją lokaty.', math:'8640 × (1,08)¹⁰ ≈ 18 635 zł. Vs lokata 5%: ≈ 14 076 zł. Różnica: +4559 zł.' }},
+        { label:'Kryptowaluty — teraz albo nigdy!', sub:'Obiecany zwrot 300% w 6 miesięcy', tag:'🎰 RYZYKO',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Uwaga!</strong> "Gwarantowany zwrot 300%" = czerwona flaga scamu.', math:'Oczekiwana wartość przy ryzyku utraty całości jest prawdopodobnie ujemna.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Ty', role:'6 miesięcy później', ava:'😌', bg:'rgba(167,139,250,0.15)' },
+      text:'Masz odłożone <span class="hi">~4000 zł oszczędności</span>. Mama potrzebuje 2000 zł pilnie na naprawę dachu.',
+      choices:[
+        { label:'Pożyczam mamie z oszczędności — rodzina ważniejsza', sub:'Daję 2000 zł, zostaje mi 2000 zł buforu', tag:'❤️ RODZINA',
+          effect:{ money:-2000 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Piękna decyzja.</strong> Masz poduszkę — właśnie po to ją budowałeś/aś.', math:'4000 − 2000 = 2000 zł zostaje. Wracasz do 2000 zł za 2,8 miesiąca.' }},
+        { label:'Mówię mamie że nie mam — to moje oszczędności', sub:'Zachowuję 4000 zł nietkniętych', tag:'🤔 TRUDNA',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Oszczędności to narzędzie. Szczególnie w nagłych sytuacjach rodzinnych.', math:'Możesz mieć 4000 zł i nie pomagać. Ale to właśnie ta "czarna godzina".' }},
+        { label:'Biorę szybką pożyczkę — nie ruszam oszczędności', sub:'Chwilówka 2000 zł, oddam za miesiąc', tag:'❌ CHWILÓWKA',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Błąd!</strong> Chwilówka przy RRSO 100–500% to najdroższy sposób na 2000 zł.', math:'2000 zł × RRSO 200% na 30 dni ≈ 2330 zł. Tracisz 330 zł zbędnie.' }},
+      ]
+    }
+  ]
+},
+
+/* ── SIM 4: STADIUM TACTICS ── */
+stadium_tactics: {
+  title:'10 Minut do Końca ⚽', subtitle:'Przegrywasz 0:1 — podejmuj decyzje taktyczne',
+  scene:'stadium', money:null, accentColor:'#06d6a0',
+  steps:[
+    {
+      speaker:{ name:'Trener Marek', role:'Ławka rezerwowych, 80. minuta', ava:'⚽', bg:'rgba(6,214,160,0.15)' },
+      text:'<strong>80. minuta. Przegrywamy 0:1.</strong> Napastnik Piotr kontuzjowany — skuteczność <span class="hi">82%</span>. Rezerwowy Łukasz — 60%, ale świeży.',
+      choices:[
+        { label:'Ryzykuję — Piotr zostaje (82% skuteczności)', sub:'Ale grozi pogłębienie kontuzji', tag:'🎯 RYZYKO',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Piotr 82% × P(bez kontuzji ~60%) = efektywne <strong>49%</strong>. Może warto zmienić?', math:'E[skuteczność] = 0,82 × 0,60 = 0,49. Łukasz: 0,60 × 1,00 = 0,60.' }},
+        { label:'Zmieniam na Łukasza — 60% ale w pełni sprawny', sub:'Kalkuluję realne prawdopodobieństwo', tag:'🧮 ANALITYK',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Doskonała analiza!</strong> Łukasz 60% > Piotr kontuzjowany 49%.', math:'P(gol|Łukasz) = 0,60 > P(gol|Piotr kontuzjowany) ≈ 0,49' }},
+        { label:'Zostawiam wszystko bez zmian', sub:'Nie ruszam składu', tag:'😐 PASYWNY',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Pasywność to też decyzja.</strong> Brak działania przy niekorzystnych danych to błąd.', math:'Każda minuta Piotra z 49% < Łukasza 60%.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Ty', role:'87. minuta — rzut wolny z 25m', ava:'📊', bg:'rgba(255,209,102,0.12)' },
+      text:'Kacper (specjalista) trafia 35% z tej odległości. Łukasz z głowy: 28%. Masz jeden wybór.',
+      choices:[
+        { label:'Kacper uderza bezpośrednio — 35% szans', sub:'Wyższe prawdopodobieństwo gola', tag:'📐 KALKULACJA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Poprawna analiza!</strong> 35% > 28%. W grze o jeden rzut — wybierasz wyższe P.', math:'E[gol z wolnego] = 0,35 > E[gol z dośrodkowania] = 0,28' }},
+        { label:'Dośrodkowanie na Łukasza — element zaskoczenia', sub:'28% + nieznane dla bramkarza', tag:'🎭 ZASKOCZENIE',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Zaskoczenie ma wartość, ale trudno ją zmierzyć.', math:'Jeśli "efekt zaskoczenia" = +10%, to 38% > 35%. Tylko jeśli faktycznie +10%.' }},
+        { label:'Zatrzymuję grę — naradzam się z drużyną', sub:'Tracę cenny czas', tag:'⏰ CZASOCHŁONNE',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Czas to zasób!</strong> 87. minuta, każda sekunda na wagę złota.', math:'Wartość decyzji spada gdy czas → 0. Paraliza przez analizę = błąd.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Wynik końcowy', role:'Doliczony czas gry', ava:'🏆', bg:'rgba(6,214,160,0.15)' },
+      text:'<strong>93. minuta.</strong> Zapasowy bramkarz P(obrony) = 0,55 (normalnie 0,75). Strzelasz karnego.',
+      choices:[
+        { label:'Strzelam w lewy róg — mój mocniejszy (P=0,70)', sub:'Precyzja i pewność siebie', tag:'💪 PEWNOŚĆ',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dobre!</strong> P(gol) ≈ 0,70 × (1 − 0,55) = 0,315. Wysoka szansa!', math:'P(trafny strzał) × P(bramkarz nie broni) = 0,70 × 0,45 = 0,315.' }},
+        { label:'Strzelam "panenką" — bramkarz skoczy', sub:'Ryzykowna ale spektakularna technika', tag:'🎪 SHOW',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Panenka działa gdy bramkarz MUSI skoczyć. Zapasowy może też zostać.', math:'P(panenka) = P(bramkarz skacze) × P(chybił). Trudna do wyceny.' }},
+        { label:'Oddaję karnego Łukaszowi — za dużo presji', sub:'P(Łukasz) = 0,60', tag:'😰 STRES',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Odczytywanie własnych limitów to też umiejętność. Ale Twoje 0,70 > Łukasza 0,60.', math:'0,70 × 0,45 = 0,315 vs 0,60 × 0,45 = 0,270. Twój strzał statystycznie lepszy.' }},
+      ]
+    }
+  ]
+},
+
+/* ── SIM 5: HOSPITAL PATIENT ── */
+hospital_patient: {
+  title:'Przy Łóżku Pacjenta 🏥', subtitle:'Pan Kowalski — 72 kg, gorączka 38,5°C',
+  scene:'hospital', money:null, accentColor:'#ef476f',
+  steps:[
+    {
+      speaker:{ name:'Dr Nowak', role:'Oddział wewnętrzny, 14:00', ava:'👩‍⚕️', bg:'rgba(239,71,111,0.15)' },
+      text:'Poprzednia dawka o 8:00. Lek co 8 godzin. Pielęgniarka pyta: <strong>„Kiedy następna dawka?"</strong>',
+      choices:[
+        { label:'Następna o 16:00 — 8:00 + 8h = 16:00', sub:'Precyzja czasowa', tag:'⏰ POPRAWNIE',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dokładnie!</strong> Za wcześnie = przekroczenie dawki. Za późno = brak efektu.', math:'Czas_nast = 8:00 + 8:00 = 16:00' }},
+        { label:'Następna teraz (14:00) — gorączka nadal wysoka', sub:'Ale to tylko 6 godzin od poprzedniej', tag:'⚠️ BŁĄD',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Niebezpieczne!</strong> 14:00 − 8:00 = 6h. Zbyt częste = ryzyko przedawkowania.', math:'Minęło: 6h. Wymagane: 8h. Zostało: 2h. NIE podawać.' }},
+        { label:'Pytam pielęgniarki — weryfikacja z kartą', sub:'Double-check z dokumentacją', tag:'📋 WERYFIKACJA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dobry instynkt!</strong> Double-check to standard w medycynie.', math:'Protokół: oblicz → zweryfikuj → podaj. Wynik: 16:00.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Pan Kowalski', role:'Rozmowa z pacjentem', ava:'🧓', bg:'rgba(255,255,255,0.06)' },
+      text:'Pan Kowalski pyta: <strong>„Czy mogę wziąć podwójną dawkę żeby szybciej wyzdrowie?"</strong>',
+      choices:[
+        { label:'Nie — dawka obliczona na kg masy ciała', sub:'Wyjaśniasz farmakokinetykę prosto', tag:'💊 EDUKACJA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Wzorowa odpowiedź!</strong> Podwójna dawka = ryzyko uszkodzenia wątroby.', math:'36 mg × 2 = 72 mg. Zaburzenie proporcji → toksyczność.' }},
+        { label:'Powiem doktorowi — eskaluję niestandarowe żądanie', sub:'Przekazujesz decyzję wyżej', tag:'👆 ESKALACJA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Poprawna procedura!</strong> Niestandarowe żądania → eskalacja do lekarza.', math:'Bezpieczny zakres: do 0,6 mg/kg. Podwójność = 1 mg/kg. Przekroczenie.' }},
+        { label:'OK — skoro tak mówi, dam mu więcej', sub:'Pacjent zna swoje ciało', tag:'❌ NIEBEZPIECZNE',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Nigdy!</strong> Pacjent nie może sam zlecać dawki.', math:'Samowolna zmiana = błąd medyczny = ryzyko krwawienia z przewodu pokarmowego.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Dr Nowak', role:'Wieczorny obchód, 20:00', ava:'👩‍⚕️', bg:'rgba(239,71,111,0.15)' },
+      text:'<span class="hi">3 dawki × 36 mg = 108 mg</span> dziś. Ile mg zamówić na cały tydzień?',
+      choices:[
+        { label:'3 dawki × 7 dni × 36 mg = 756 mg', sub:'Pełne obliczenie krok po kroku', tag:'🧮 OBLICZENIE',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Perfekcyjnie!</strong> 3 × 7 × 36 = 756 mg. Ani za mało, ani za dużo.', math:'Dzienna: 3 × 36 = 108 mg. Tygodniowa: 108 × 7 = 756 mg.' }},
+        { label:'Zamówię 1000 mg — lepiej mieć z nadwyżką', sub:'Dla bezpieczeństwa', tag:'📦 NADWYŻKA',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Nadwyżka = zmarnowane środki i leki przechowywane ponad normę.', math:'Potrzeba: 756 mg. Zamówienie: 1000 mg. Nadwyżka: 244 mg = ~32% straty.' }},
+        { label:'Muszę liczyć — dajcie mi chwilę', sub:'Robię obliczenia na kartce', tag:'⏳ LICZĘ',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'Policzono: 3 × 7 = 21 dawek. 21 × 36 = 756 mg. Lepiej policzyć niż zgadywać.', math:'(20 × 36) + (1 × 36) = 720 + 36 = 756 mg. ✓' }},
+      ]
+    }
+  ]
+},
+
+/* ── SIM 6: SCHOOL EXAM ── */
+school_exam: {
+  title:'Projekt Mostu 🌉', subtitle:'Jesteś architektem — projekt łuku dla nowego mostu w mieście',
+  scene:'school', money:null, accentColor:'#a78bfa',
+  steps:[
+    {
+      speaker:{ name:'Zleceniodawca', role:'Urząd Miasta', ava:'🏛️', bg:'rgba(167,139,250,0.15)' },
+      text:'Most o rozpiętości <span class="hi">50 metrów</span>. Maksymalna wysokość łuku: <span class="hi">25 metrów</span>. Jaką funkcję zaprojektujesz?',
+      choices:[
+        { label:'f(x) = −0,04x² + 2x — wierzchołek (25, 25), zera x=0 i x=50', sub:'Sprawdziłem/am: f(25)=25m ✓', tag:'📐 POPRAWNE',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Idealny projekt!</strong> f(25) = −25+50 = 25m ✓. Zera: f(0)=0, f(50)=0 ✓.', math:'x_w = −b/(2a) = −2/(−0,08) = 25. f(25) = 25. ✓' }},
+        { label:'f(x) = −x² + 50 — prosto i symetrycznie', sub:'Ale czy wymiary się zgadzają?', tag:'🤔 SPRAWDZAM',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Błąd wymiarów!</strong> f(0) = 50 ≠ 0. Most zaczyna się na 50m — niemożliwe.', math:'Zera f(x)=−x²+50: x=±√50≈±7,07. Rozpiętość 14m, nie 50m!' }},
+        { label:'Potrzebuję więcej danych — jaka szerokość podstawy?', sub:'Upewniam się przed projektem', tag:'❓ PYTANIE',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'neutral', icon:'💭', text:'Dobry instynkt — ale masz dane: 50m rozpiętości, 25m max. To wystarczy.', math:'Zera w x=0 i x=50, max=25m → a = −25/625 = −0,04.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Inspektor budowlany', role:'Kontrola projektu', ava:'🔍', bg:'rgba(255,209,102,0.12)' },
+      text:'Inspektor: <strong>„Na jakiej wysokości jest łuk w x=10m i x=40m?"</strong> Sprawdza symetrię.',
+      choices:[
+        { label:'f(10) = f(40) = 16m — most symetryczny', sub:'|10−25| = |40−25| = 15', tag:'✅ SYMETRIA',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Doskonale!</strong> f(10) = −4+20 = 16m. f(40) = −64+80 = 16m. Symetria względem x=25.', math:'Oś symetrii: x=25. Odległości: |10−25|=15=|40−25|. Równe → f(10)=f(40).' }},
+        { label:'Nie wiem — muszę liczyć od nowa', sub:'Wracam do obliczeń', tag:'⏳ LICZĘ',
+          effect:{ money:0 }, score:1,
+          outcome:{ type:'ok', icon:'✅', text:'Policzono: f(10) = −0,04·100 + 20 = 16m. f(40) = −64+80 = 16m. Symetryczne!', math:'Każda parabola jest symetryczna względem osi x = x_w = 25.' }},
+        { label:'Różne wysokości — lewa i prawa strona to co innego', sub:'Most niesymetryczny', tag:'❌ BŁĄD',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Błąd!</strong> Parabola z osią x=25 jest idealnie symetryczna.', math:'|10−25| = 15 = |40−25|. Symetria gwarantuje f(10)=f(40)=16m.' }},
+      ]
+    },
+    {
+      speaker:{ name:'Klient VIP', role:'Galeria Handlowa — nowe zlecenie', ava:'💼', bg:'rgba(76,201,240,0.15)' },
+      text:'Szklane zadaszenie: szerokość <strong>20m</strong>, środek na wysokości <strong>8m</strong>. Jakie równanie?',
+      choices:[
+        { label:'f(x) = −0,08x² + 8 (zera: x=±10, max=8)', sub:'Wycentrowane na x=0', tag:'🧮 OBLICZONO',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Znakomicie!</strong> f(0)=8 ✓, f(±10)=0 ✓. Rozpiętość 20m, szczyt 8m.', math:'a = −h/x₀² = −8/100 = −0,08. f(x) = −0,08x² + 8.' }},
+        { label:'f(x) = −x² + 8 — ale zera gdzie?', sub:'Sprawdzam zera tej funkcji', tag:'🤔 SPRAWDZAM',
+          effect:{ money:0 }, score:0,
+          outcome:{ type:'fail', icon:'❌', text:'<strong>Błąd!</strong> Zera: x=±√8≈±2,83. Rozpiętość tylko 5,66m, nie 20m!', math:'Dla 20m (zera ±10): a·100+8=0 → a=−0,08. Nie a=−1.' }},
+        { label:'Rysuję szkic — wizualizacja przed równaniem', sub:'Oś OX = podstawa, środek x=0', tag:'✏️ RYSUNEK',
+          effect:{ money:0 }, score:2,
+          outcome:{ type:'ok', icon:'✅', text:'<strong>Dobra metoda!</strong> Punkt (0,8) = szczyt, (±10,0) = krawędzie.', math:'a·100+8=0 → a=−0,08. f(x)=−0,08x²+8.' }},
+      ]
+    }
+  ]
+}
+
+}; // end SIMS
+
+
+/* ══════════════════════════════════════════════════════
+   SIM RUNNER — silnik symulacji
+══════════════════════════════════════════════════════ */
+let _simId   = null;
+let _simStep = 0;
+let _simScores   = [];
+let _simMoney    = 0;
+let _simCallback = null;
+let _simMissionIdx   = null;
+let _simCurrentTaskIdx = null;
+
+function openSim(simId, missionIdx, taskIdx, onDone) {
+  _simId             = simId;
+  _simStep           = 0;
+  _simScores         = [];
+  _simCallback       = onDone;
+  _simMissionIdx     = missionIdx;
+  _simCurrentTaskIdx = taskIdx;
+
+  const sim  = SIMS[simId];
+  _simMoney  = sim.money || 0;
+
+  const el = document.getElementById('sim-overlay');
+  el.innerHTML = '';
+  renderSimStep(sim, 0);
+  el.classList.add('open');
+}
+window.openSim = openSim;
+
+function renderSimStep(sim, stepIdx) {
+  if (stepIdx >= sim.steps.length) { finishSim(sim); return; }
+
+  const step = sim.steps[stepIdx];
+  const el   = document.getElementById('sim-overlay');
+
+  /* ── step dots ── */
+  const dotsHTML = sim.steps.map((_, i) => {
+    const cls = i < stepIdx ? (_simScores[i] >= 2 ? 'done' : 'fail') : i === stepIdx ? 'active' : '';
+    return `<div class="ssd ${cls}"></div>`;
+  }).join('');
+
+  /* ── money tracker ── */
+  const moneyHTML = sim.money !== null
+    ? `<div class="sim-money show" id="sim-money-tracker">💰 ${_simMoney.toLocaleString('pl-PL')} zł</div>`
+    : '';
+
+  /* ── choices HTML ── */
+  const colsCls  = step.choices.length === 2 ? 'cols2' : 'cols1';
+  const choicesHTML = step.choices.map((c, i) => `
+    <button class="sc-btn" id="sc${i}" onclick="chooseSim(${i})">
+      <span class="sc-tag" style="color:${sim.accentColor}">${c.tag}</span>
+      <span class="sc-label">${c.label}</span>
+      <span class="sc-sub">${c.sub}</span>
+    </button>`).join('');
+
+  /* ── full render — jeden innerHTML zamiast wielu operacji DOM ── */
+  el.innerHTML = `
+    <div class="sim-scene scene-${sim.scene}">
+      <div class="sim-particles" id="sim-particles"></div>
+      ${buildScene(sim.scene, sim.accentColor)}
+      ${moneyHTML}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;width:100%;background:rgba(1,1,10,.98);flex:0 0 auto;">
+      <div class="sim-step-bar">
+        <div class="sim-step-dots">${dotsHTML}</div>
+        <div class="sim-step-label">${stepIdx + 1} / ${sim.steps.length} decyzji</div>
+      </div>
+      <div class="sim-narrative">
+        <div class="sim-speaker-strip">
+          <div class="sim-speaker-ava" style="background:${step.speaker.bg}">${step.speaker.ava}</div>
+          <div>
+            <div class="sim-speaker-name">${step.speaker.name}</div>
+            <div class="sim-speaker-role">${step.speaker.role}</div>
+          </div>
+        </div>
+        <div class="sim-text-box">
+          <div class="sim-text" id="sim-text-el" style="opacity:0;transition:opacity .45s"></div>
+        </div>
+      </div>
+      <div class="sim-choices ${colsCls}" id="sim-choices" style="opacity:0;pointer-events:none;transition:opacity .4s .15s">
+        ${choicesHTML}
+      </div>
+      <div class="sim-outcome" id="sim-outcome"></div>
+      <div class="sim-footer">
+        <button class="sim-continue" id="sim-continue" onclick="simContinue()" disabled>
+          ${stepIdx < sim.steps.length - 1 ? 'Następna decyzja →' : 'Zakończ symulację ✓'}
+        </button>
+        <button class="sim-exit" onclick="exitSim()">✕ Wyjdź</button>
+      </div>
+    </div>`;
+
+  spawnSimParticles(sim.accentColor);
+
+  /* ── fade in text then choices ── */
+  requestAnimationFrame(() => {
+    const txt = document.getElementById('sim-text-el');
+    if (txt) {
+      txt.innerHTML = step.text;
+      txt.style.opacity = '1';
+    }
+    setTimeout(() => {
+      const ch = document.getElementById('sim-choices');
+      if (ch) { ch.style.opacity = '1'; ch.style.pointerEvents = 'auto'; }
+      // Aktualizuj wyświetlanie pieniędzy w tekście
+      if (sim.money !== null) {
+        document.querySelectorAll('[id^="sim-money-display"]').forEach(el => {
+          el.textContent = _simMoney.toLocaleString('pl-PL') + ' zł';
+        });
+      }
+    }, 700);
+  });
+}
+
+function chooseSim(idx) {
+  const sim    = SIMS[_simId];
+  const step   = sim.steps[_simStep];
+  const choice = step.choices[idx];
+  const out    = choice.outcome;
+
+  /* Zablokuj wszystkie przyciski */
+  step.choices.forEach((_, i) => {
+    const btn = document.getElementById('sc' + i);
+    if (btn) {
+      btn.classList.add(i === idx ? 'outcome-' + out.type : 'dimmed');
+      btn.disabled = true;
+    }
+  });
+
+  /* Pieniądze */
+  if (sim.money !== null && choice.effect?.money) {
+    _simMoney += choice.effect.money;
+    const mt = document.getElementById('sim-money-tracker');
+    if (mt) mt.textContent = '💰 ' + _simMoney.toLocaleString('pl-PL') + ' zł';
+  }
+
+  _simScores[_simStep] = choice.score || 0;
+
+  /* Outcome banner */
+  const outcomeEl = document.getElementById('sim-outcome');
+  if (outcomeEl) {
+    outcomeEl.innerHTML = `
+      <div class="outcome-banner ${out.type}">
+        <div class="ob-icon">${out.icon}</div>
+        <div>
+          <div class="ob-body-text">${out.text}</div>
+          ${out.math ? `<div class="ob-math">📐 ${out.math}</div>` : ''}
+        </div>
+      </div>`;
+    outcomeEl.classList.add('show');
+  }
+
+  document.getElementById('sim-continue')?.removeAttribute('disabled');
+
+  /* XP + efekty */
+  if (choice.score >= 2) {
+    addXP(18, true);
+    AUDIO.playSuccess();
+    REACTIVE_BG.success();
+  } else if (choice.score === 1) {
+    addXP(8, true);
+    AUDIO.playClick();
+  } else {
+    loseEnergy();
+    AUDIO.playFail();
+    REACTIVE_BG.fail();
+  }
+}
+window.chooseSim = chooseSim;
+
+function simContinue() {
+  _simStep++;
+  renderSimStep(SIMS[_simId], _simStep);
+}
+window.simContinue = simContinue;
+
+function finishSim(sim) {
+  const total  = _simScores.reduce((a, b) => a + b, 0);
+  const maxPts = sim.steps.length * 2;
+  const pct    = Math.round(total / maxPts * 100);
+  const great  = pct >= 70;
+  const task   = window.MISSIONS[_simMissionIdx]?.tasks[_simCurrentTaskIdx];
+
+  const dotsRow = sim.steps.map((_, i) => {
+    const s = _simScores[i];
+    const [bg, border, icon] = s >= 2
+      ? ['rgba(6,214,160,.2)',  'rgba(6,214,160,.4)',  '✅']
+      : s === 1
+      ? ['rgba(255,209,102,.15)', 'rgba(255,209,102,.3)', '💛']
+      : ['rgba(239,71,111,.15)', 'rgba(239,71,111,.3)',  '❌'];
+    return `<div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:${bg};border:1px solid ${border}">${icon}</div>`;
+  }).join('');
+
+  document.getElementById('sim-overlay').innerHTML = `
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px;">
+      <div style="max-width:440px;width:100%;text-align:center;">
+        <div style="font-size:64px;margin-bottom:16px;animation:floatCity 2s ease-in-out infinite">${great ? '🌟' : '📚'}</div>
+        <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:6px">${great ? 'Świetne decyzje!' : 'Czas na refleksję'}</div>
+        <div style="font-size:14px;color:rgba(255,255,255,.45);margin-bottom:28px">${great ? 'Rozumiesz życiowe konsekwencje matematyki' : 'Wróć do tej symulacji — decyzje mają wagę'}</div>
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px">${dotsRow}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:rgba(255,255,255,.4);margin-bottom:8px">${pct}% trafnych decyzji</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.55);line-height:1.7;margin-bottom:28px;padding:14px;background:rgba(255,255,255,.04);border-radius:12px;border:1px solid rgba(255,255,255,.07)">
+          ${task ? task.explain : ''}
+        </div>
+        <button onclick="closeSim(${great})"
+          style="width:100%;padding:14px;border-radius:12px;background:#fff;color:#01010a;border:none;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;cursor:pointer">
+          Wróć do rozmowy →
+        </button>
+      </div>
+    </div>`;
+}
+
+function closeSim(success) {
+  document.getElementById('sim-overlay').classList.remove('open');
+  if (_simCallback) _simCallback(!!success);
+}
+window.closeSim = closeSim;
+
+function exitSim() {
+  document.getElementById('sim-overlay').classList.remove('open');
+  if (_simCallback) _simCallback(false);
+}
+window.exitSim = exitSim;
+
+/* Cząsteczki tła sceny */
+function spawnSimParticles(colorHex) {
+  const cont = document.getElementById('sim-particles');
+  if (!cont) return;
+  const r = parseInt(colorHex.slice(1, 3), 16);
+  const g = parseInt(colorHex.slice(3, 5), 16);
+  const b = parseInt(colorHex.slice(5, 7), 16);
+  /* OPTYMALIZACJA: budujemy HTML raz zamiast appendChild w pętli */
+  const html = [];
+  for (let i = 0; i < 12; i++) {
+    const sz = 2 + Math.random() * 4;
+    html.push(`<div class="sp" style="width:${sz}px;height:${sz}px;left:${Math.random()*100}%;bottom:${Math.random()*30}%;background:rgba(${r},${g},${b},${(0.3+Math.random()*.5).toFixed(2)});animation-duration:${(4+Math.random()*6).toFixed(1)}s;animation-delay:${(Math.random()*4).toFixed(1)}s"></div>`);
+  }
+  cont.innerHTML = html.join('');
+}
+
+/* Buduj scenę CSS */
+function buildScene(type, color) {
+  if (type === 'apartment') return `
+    <div class="sim-room">
+      <div class="sim-window" style="left:30px;top:10px;">
+        <div class="sim-window-glow"></div>
+        <svg width="178" height="218" style="position:absolute;opacity:.3"><path d="M10,218 Q89,20 178,218" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 4"/></svg>
+      </div>
+      <div class="sim-couch"><div class="sim-couch-arm left"></div><div class="sim-couch-back"></div><div class="sim-couch-body"></div><div class="sim-couch-arm right"></div></div>
+      <div class="sim-table"><div class="sim-table-top"></div><div class="sim-table-leg left"></div><div class="sim-table-leg right"></div><div class="sim-laptop"><div class="sim-laptop-screen">💻</div><div class="sim-laptop-base"></div></div></div>
+      <div class="sim-floor"></div>
+    </div>`;
+
+  if (type === 'market') return `
+    <div class="sim-room" style="display:flex;align-items:flex-end;gap:20px;justify-content:center;height:200px;">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="sim-shelf" style="width:120px;height:8px;"></div>
+        <div style="display:flex;gap:4px;margin-top:2px;">${['🥛','🧀','🍖','🥦'].map(e=>`<div style="width:24px;height:28px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:14px">${e}</div>`).join('')}</div>
+        <div class="sim-shelf" style="width:120px;height:8px;"></div>
+        <div style="display:flex;gap:4px;margin-top:2px;">${['🥫','🫙','🍝','🧂'].map(e=>`<div style="width:24px;height:28px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:14px">${e}</div>`).join('')}</div>
+      </div>
+      <div style="position:relative;">
+        <div class="sim-price-tag" style="background:rgba(239,71,111,.15);border-color:rgba(239,71,111,.4);color:var(--red);bottom:80px;right:-10px;position:absolute;">−30%</div>
+        <div class="sim-price-tag" style="background:rgba(255,209,102,.15);border-color:rgba(255,209,102,.4);color:var(--gold);bottom:40px;right:-10px;position:absolute;">PROMOCJA</div>
+        <div style="font-size:48px;line-height:1">🛒</div>
+        <div style="width:60px;height:6px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:4px"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="sim-shelf" style="width:120px;height:8px;"></div>
+        <div style="display:flex;gap:4px;margin-top:2px;">${['🍎','🍊','🍋','🥕'].map(e=>`<div style="width:24px;height:28px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:14px">${e}</div>`).join('')}</div>
+        <div class="sim-shelf" style="width:120px;height:8px;"></div>
+        <div style="display:flex;gap:4px;margin-top:2px;">${['🍞','🥐','🧁','🍰'].map(e=>`<div style="width:24px;height:28px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:14px">${e}</div>`).join('')}</div>
+      </div>
+    </div>`;
+
+  if (type === 'office') return `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;">
+      <div style="display:flex;gap:4px;">${[1,2,3,4,5].map(i=>`<div style="width:32px;height:${50+i*12}px;background:rgba(76,201,240,${(0.06+i*0.03).toFixed(2)});border:1px solid rgba(76,201,240,.12);border-radius:2px 2px 0 0;"></div>`).join('')}</div>
+      <div style="width:260px;height:2px;background:rgba(255,255,255,.07)"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px">
+        <span style="font-size:18px">📊</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(76,201,240,.8)">+30% sprzedaż · 5520 zł/mies</span>
+      </div>
+    </div>`;
+
+  if (type === 'stadium') return `
+    <div class="sim-room" style="width:100%;max-width:500px;height:200px;position:relative;">
+      <div class="sim-pitch">
+        <div class="sim-pitch-line" style="left:50%;top:10px;bottom:0;width:1px;transform:translateX(-50%)"></div>
+        <div class="sim-pitch-line" style="left:20%;top:0;bottom:0;width:1px;opacity:.5"></div>
+        <div class="sim-pitch-line" style="right:20%;top:0;bottom:0;width:1px;opacity:.5"></div>
+      </div>
+      <div class="sim-scoreboard"><div class="sim-score-lbl">CZAS 80'</div><div class="sim-score-txt">0 : 1</div></div>
+      <div class="sim-player" style="left:30%">⚽</div>
+      <div class="sim-player" style="left:50%;animation-delay:.5s">🏃</div>
+      <div class="sim-player" style="right:25%;animation-delay:1s">🥅</div>
+    </div>`;
+
+  if (type === 'hospital') return `
+    <div class="sim-room" style="display:flex;justify-content:center;align-items:flex-end;height:160px;position:relative;">
+      <div class="sim-monitor">
+        <div style="font-size:10px;color:rgba(255,255,255,.7);margin-bottom:2px;font-weight:bold;letter-spacing:1px">HR 72</div>
+        <div class="sim-ecg"><div class="sim-ecg-line">〰️〰️〰️〰️〰️〰️</div></div>
+      </div>
+      <div class="sim-bed"><div class="sim-bed-frame"></div><div class="sim-bed-pillow"></div><div class="sim-patient">🤕</div></div>
+    </div>`;
+
+  if (type === 'school') return `
+    <div class="sim-room" style="display:flex;flex-direction:column;align-items:center;height:180px;position:relative;">
+      <div class="sim-board"><div class="sim-board-formula">f(x) = ax² + bx + c<br>Δ = b² − 4ac</div></div>
+      <div class="sim-student" style="bottom:5px">👩‍🏫</div>
+    </div>`;
+
+  return '';
+}
+
+
+/* ══════════════════════════════════════════════════════
+   MISSION ENGINE — silnik misji (chat)
+══════════════════════════════════════════════════════ */
+let _mId          = null;
+let _mTasks       = [];
+let _mTaskIdx     = 0;
+let _mTaskActive  = false;
+let _mCorrect     = 0;
+let _mTotal       = 0;
+let _mXPEarned    = 0;
+
+function openMission(idx) {
+  const m = window.MISSIONS[idx];
+  if (!m) return;
+
+  _mId         = idx;
+  _mTasks      = m.tasks;
+  _mTaskIdx    = 0;
+  _mTaskActive = true;
+  _mCorrect    = 0;
+  _mTotal      = 0;
+  _mXPEarned   = 0;
+
+  COMBO.reset();
+  AUDIO.playMissionOpen();
+  REACTIVE_BG.missionOpen();
+
+  /* NPC strip */
+  const ava = document.getElementById('mo-ava');
+  ava.textContent  = m.npc.ava;
+  ava.style.background = m.npc.bg;
+  document.getElementById('mo-npc-name').textContent  = m.npc.name;
+  const roleEl = document.getElementById('mo-npc-role');
+  roleEl.textContent = m.npc.role;
+  roleEl.style.color = m.color;
+
+  /* Reset UI */
+  document.getElementById('mo-chat').innerHTML        = '';
+  document.getElementById('task-dots').innerHTML      = m.tasks.map((_, i) => `<div class="tdot" id="tdot${i}"></div>`).join('');
+  document.getElementById('reward-bar').classList.remove('show');
+  document.getElementById('mo-btn').style.display     = 'none';
+  document.getElementById('mo-task').innerHTML        = '';
+
+  document.getElementById('mission-overlay').classList.add('open');
+  updateMissionProg();
+
+  /* Intro sekwencja */
+  let delay = 300;
+  m.intro.forEach(text => {
+    setTimeout(() => addBubble(text, 'npc'), delay);
+    delay += 1100 + text.length * 14;
+  });
+  setTimeout(loadTask, delay + 350);
+}
+window.openMission = openMission;
+
+function closeMission() {
+  document.getElementById('mission-overlay').classList.remove('open');
+}
+window.closeMission = closeMission;
+
+function updateMissionProg() {
+  const pct  = (_mTaskIdx / _mTasks.length) * 100;
+  const fill = document.getElementById('mo-prog');
+  fill.style.width      = pct + '%';
+  fill.style.background = window.MISSIONS[_mId].color;
+  document.getElementById('mo-prog-label').textContent = `${_mTaskIdx} / ${_mTasks.length} zadań`;
+
+  const dots = document.getElementById('task-dots').children;
+  for (let i = 0; i < dots.length; i++) {
+    dots[i].className = 'tdot'
+      + (i === _mTaskIdx ? ' active' : i < _mTaskIdx ? ' ok' : '');
+  }
+}
+
+/* OPTYMALIZACJA: addBubble bez wewnętrznych scrollTo co każde wywołanie */
+function addBubble(text, type, extraClass = '') {
+  const chat = document.getElementById('mo-chat');
+  const b    = document.createElement('div');
+  b.className = `bubble ${type} ${extraClass}`.trim();
+  b.innerHTML = text;
+  chat.appendChild(b);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function loadTask() {
+  if (_mTaskIdx >= _mTasks.length) { finishMission(); return; }
+  _mTaskActive = true;
+  _mTotal++;
+  const t = _mTasks[_mTaskIdx];
+  updateMissionProg();
+  markQuestionStart();
+  EMOTIONS.set('thinking', 1400);
+
+  setTimeout(() => addBubble(t.npc, 'npc'), 200);
+
+  const tarea = document.getElementById('mo-task');
+  const parts = [`<div class="type-badge tb-${t.type}">${t.type.toUpperCase()}</div>`];
+
+  if (t.type === 'abcd') {
+    parts.push('<div class="choices">');
+    t.opts.forEach((o, i) => parts.push(`<button class="cbtn" onclick="checkAbcd(${i})">${o}</button>`));
+    parts.push('</div>');
+  } else if (t.type === 'open') {
+    parts.push(`<input type="text" class="open-inp" id="open-inp" placeholder="Wpisz wynik…" onkeydown="if(event.key==='Enter')checkOpen()">`);
+    parts.push(`<button class="cbtn" onclick="checkOpen()">Zatwierdź →</button>`);
+  } else if (t.type === 'sim') {
+    parts.push(`<button class="cbtn" style="background:var(--accent);color:#fff;text-align:center;font-weight:700" onclick="startTaskSim('${t.simId}')">🎮 Rozpocznij symulację</button>`);
+  } else if (t.type === 'voice') {
+    parts.push(`
+      <div class="voice-wrap">
+        <div class="voice-hint"><div class="vh-label">Wskazówka:</div><div class="vh-text">${t.voiceHint}</div></div>
+        <button class="voice-rec idle" id="vrec-btn" onclick="toggleVoice()">🎙️ Nagraj odpowiedź</button>
+      </div>`);
+  }
+
+  setTimeout(() => {
+    tarea.innerHTML = parts.join('');
+    document.getElementById('mo-chat').scrollTop = document.getElementById('mo-chat').scrollHeight;
+  }, 600);
+}
+
+function checkAbcd(idx) {
+  if (!_mTaskActive) return;
+  _mTaskActive = false;
+  AUDIO.playClick();
+  const t    = _mTasks[_mTaskIdx];
+  const btns = document.querySelectorAll('.cbtn');
+  btns.forEach(b => b.disabled = true);
+
+  addBubble(t.opts[idx], 'player');
+  ACHIEVEMENTS.check('first_answer');
+
+  if (idx === t.correct) {
+    btns[idx].classList.add('ok');
+    taskSuccess(t);
+  } else {
+    btns[idx].classList.add('fail');
+    if (btns[t.correct]) btns[t.correct].classList.add('ok');
+    taskFail(t);
+  }
+}
+window.checkAbcd = checkAbcd;
+
+function checkOpen() {
+  if (!_mTaskActive) return;
+  const inp = document.getElementById('open-inp');
+  if (!inp) return;
+  const val = inp.value.trim().toLowerCase();
+  if (!val) return;
+  _mTaskActive = false;
+  AUDIO.playClick();
+  inp.disabled = true;
+  addBubble(val, 'player');
+  ACHIEVEMENTS.check('first_answer');
+
+  const t  = _mTasks[_mTaskIdx];
+  const ok = t.checks.some(c => val.includes(c.toLowerCase()));
+  inp.classList.add(ok ? 'ok' : 'fail');
+  ok ? taskSuccess(t) : taskFail(t);
+}
+window.checkOpen = checkOpen;
+
+function startTaskSim(simId) {
+  if (!_mTaskActive) return;
+  _mTaskActive = false;
+  ACHIEVEMENTS.check('first_sim');
+  addBubble('<i>[Rozpoczyna symulację…]</i>', 'player');
+  document.getElementById('mo-task').innerHTML = '';
+  const t = _mTasks[_mTaskIdx];
+  openSim(simId, _mId, _mTaskIdx, success => success ? taskSuccess(t) : taskFail(t));
+}
+window.startTaskSim = startTaskSim;
+
+let _vRec = false;
+function toggleVoice() {
+  if (!_mTaskActive && !_vRec) return;
+  const btn = document.getElementById('vrec-btn');
+  if (!btn) return;
+
+  if (!_vRec) {
+    _vRec = true;
+    btn.className = 'voice-rec rec';
+    btn.innerHTML = '🛑 Zatrzymaj nagrywanie';
+    AUDIO.playClick();
+  } else {
+    _vRec = false;
+    _mTaskActive = false;
+    btn.className = 'voice-rec done';
+    btn.innerHTML = '✅ Nagrano';
+    btn.disabled  = true;
+    ACHIEVEMENTS.check('voice_first');
+    addBubble('<i>[Wysłano wiadomość głosową 🎙️]</i>', 'player', 'ok');
+    setTimeout(() => taskSuccess(_mTasks[_mTaskIdx]), 700);
+  }
+}
+window.toggleVoice = toggleVoice;
+
+function taskSuccess(t) {
+  const speedBonus  = checkSpeedBonus();
+  const streakCount = COMBO.increment();
+  const mult        = COMBO.getMultiplier();
+  const bonusXP     = Math.round(15 * (mult - 1)) + speedBonus;
+
+  _mCorrect++;
+  _mXPEarned += 15 + bonusXP;
+
+  AUDIO.playSuccess();
+  REACTIVE_BG.success();
+  EMOTIONS.set('happy', 2000);
+
+  ACHIEVEMENTS.check('first_correct');
+  if (streakCount >= 3) ACHIEVEMENTS.check('combo_3');
+  if (streakCount >= 5) ACHIEVEMENTS.check('combo_5');
+
+  if (bonusXP > 0) {
+    const pop = document.createElement('div');
+    pop.style.cssText = 'position:fixed;top:70px;right:22px;z-index:800;font-family:\'JetBrains Mono\',monospace;font-size:13px;font-weight:700;color:#ffd166;pointer-events:none;animation:xpPop .4s cubic-bezier(.16,1,.3,1) forwards';
+    pop.textContent = `+${bonusXP} COMBO!`;
+    document.body.appendChild(pop);
+    setTimeout(() => pop.remove(), 2000);
+  }
+
+  document.getElementById('mo-task').innerHTML = '';
+  setTimeout(() => {
+    addBubble(t.npc_ok, 'npc');
+    if (t.explain) addBubble('💡 ' + t.explain, 'hint-bubble');
+    addXP(15 + bonusXP, false);
+    _mTaskIdx++;
+    setTimeout(loadTask, 1800);
+  }, 500);
+}
+
+function taskFail(t) {
+  COMBO.reset();
+  AUDIO.playFail();
+  REACTIVE_BG.fail();
+  EMOTIONS.set('sad', 2000);
+  loseEnergy();
+
+  const failCount = HINTS.recordFail(_mTaskIdx);
+  document.getElementById('mo-task').innerHTML = '';
+
+  setTimeout(() => {
+    addBubble(t.npc_fail, 'npc');
+    if (t.explain) addBubble('📐 ' + t.explain, 'sys');
+    if (failCount >= 2 && t.hint) {
+      setTimeout(() => HINTS.showHint(t.hint), 1200);
+    }
+    _mTaskIdx++;
+    setTimeout(loadTask, 2400);
+  }, 500);
+}
+
+function finishMission() {
+  document.getElementById('mo-prog').style.width = '100%';
+  document.getElementById('mo-prog-label').textContent = 'Ukończono! ✓';
+
+  const m = window.MISSIONS[_mId];
+  const b = window._beaconMeshes[_mId];
+
+  if (b && !b.completed) {
+    b.completed = true;
+    b._dimmed   = false; // zresetuj flagę by animate() ją ustawił
+    window._completedMissions++;
+    document.getElementById('missions-val').textContent = `${window._completedMissions}/6`;
+    _mXPEarned += m.xp;
+    addXP(m.xp, true);
+  }
+
+  document.getElementById('mo-task').innerHTML = '';
+  document.getElementById('reward-txt').innerHTML = m.reward;
+  document.getElementById('reward-bar').classList.add('show');
+
+  const btn = document.getElementById('mo-btn');
+  btn.style.display = 'block';
+  btn.textContent   = 'Zakończ spotkanie';
+  btn.onclick       = closeMission;
+
+  ACHIEVEMENTS.check('graduate');
+
+  if (window._completedMissions === 6) {
+    setTimeout(() => showToast('🎓', 'Gratulacje! Zdałeś/aś maturę z życia!', 8000), 1500);
+    ACHIEVEMENTS.check('all_sims');
+  }
+
+  /* Statystyki z opóźnieniem — nie blokuje animacji zamknięcia */
+  setTimeout(() => {
+    showMissionStats(_mId, _mCorrect, Math.max(_mTotal, 1), _mXPEarned);
+  }, 1800);
+}
+
+
+/* ══════════════════════════════════════════════════════
+   ONBOARDING & PODSTAWOWE FUNKCJE UI
+══════════════════════════════════════════════════════ */
+let _obStep = 0;
+function obNext(n) {
+  document.getElementById('ob'  + _obStep).classList.remove('active');
+  document.getElementById('od' + _obStep).classList.remove('active');
+  _obStep = n;
+  document.getElementById('ob'  + n).classList.add('active');
+  document.getElementById('od' + n).classList.add('active');
+  AUDIO.playClick();
+}
+function startGame() {
+  document.getElementById('onboarding').classList.add('done');
+  setTimeout(startPhoneSystem, 30000);
+  showToast('🌆', 'Miasto czeka. Kliknij świecący budynek!', 4000);
+}
+window.obNext    = obNext;
+window.startGame = startGame;
+
+/* ── Energy ── */
+function updateEnergy() {
+  document.getElementById('energy-hearts').querySelectorAll('.energy-heart')
+    .forEach((el, i) => el.classList.toggle('empty', i >= window._energy));
+}
+function loseEnergy() {
+  if (window._energy > 0) {
+    window._energy--;
+    updateEnergy();
+    const sheet = document.getElementById('mo-sheet');
+    if (sheet) { sheet.classList.add('eshake'); setTimeout(() => sheet.classList.remove('eshake'), 420); }
+    showToast('💔', 'Straciłeś/aś życie!', 2500);
+  }
+}
+function gainEnergy() {
+  if (window._energy < 3) { window._energy++; updateEnergy(); }
+}
+
+/* ── Toast ── */
+let _toastTimer = null;
+function showToast(icon, text, ms = 3000) {
+  document.getElementById('toast-icon').textContent = icon;
+  document.getElementById('toast-text').textContent = text;
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+/* ── XP ── */
+function addXP(n, show = true) {
+  window._totalXP = (window._totalXP || 0) + n;
+  const xpEl = document.getElementById('xp-val');
+  xpEl.textContent = window._totalXP;
+
+  if (show && n > 0) {
+    document.getElementById('xp-amt').textContent = '+' + n + ' XP';
+    const p = document.getElementById('xp-popup');
+    p.classList.add('show');
+    setTimeout(() => p.classList.remove('show'), 2800);
+    AUDIO.playXP();
+  }
+
+  // Flash efekt na liczniku
+  xpEl.classList.add('flash');
+  setTimeout(() => xpEl.classList.remove('flash'), 600);
+
+  // Achievements
+  if (window._totalXP >= 100) ACHIEVEMENTS.check('xp_100');
+  if (window._totalXP >= 500) ACHIEVEMENTS.check('xp_500');
+}
+window.addXP = addXP;
+
+/* ══════════════════════════════════════════════════════
+   PHONE SYSTEM
+══════════════════════════════════════════════════════ */
+const CALLS = [
+  {
+    caller:'Mama 👩', ava:'👩', bg:'rgba(167,139,250,0.2)',
+    body:'Hej kochanie! Jak idą przygody w mieście?',
+    accept_text:'Cześć mamo! Wszystko super!',
+    accept_effect: () => showToast('💕', 'Mama się cieszy!', 2500),
+    decline_text: 'Mama wysyła SMS: „Ok, zadzwoń jak możesz ❤️"',
+    decline_effect: () => {},
+  },
+  {
+    caller:'Bank ALERT 🚨', ava:'🤖', bg:'rgba(239,71,111,0.25)',
+    body:'PILNE: wykryto podejrzane logowanie. Proszę podać PIN i PESEL w celu weryfikacji.',
+    task:'⚠️ Czy to prawdziwy bank?',
+    accept_text:'NIE PODAJESZ DANYCH! To phishing — banki nigdy nie proszą o PIN!',
+    accept_xp:40,
+    accept_effect: () => { showToast('🛡️', 'Uniknąłeś/aś phishingu! +40 XP', 4000); ACHIEVEMENTS.check('phone_fraud'); },
+    decline_text:'Słusznie — to był phishing!',
+    decline_xp:30,
+    decline_effect: () => showToast('✅', 'Dobrze zrobiłeś/aś! +30 XP', 3500),
+  },
+  {
+    caller:'Pan Zdzisław 🧓', ava:'🧓', bg:'rgba(255,209,102,0.18)',
+    body:'Młody/a, mógłbyś/mogłabyś pomóc? Rachunek za prąd — 320 zł za 2 miesiące. Ile miesięcznie?',
+    task:'💡 320 zł ÷ 2 = ?',
+    accept_text:'320÷2 = 160 zł miesięcznie. Zdzisław: „Dziękuję, uratowałeś/aś mnie!"',
+    accept_xp:15,
+    accept_effect: () => showToast('🏠', 'Sąsiad szczęśliwy! +15 XP', 2500),
+    decline_text:'Odrzucasz. Sąsiad zostaje z problemem…',
+    decline_effect: () => showToast('😔', 'Szkoda — to było 30 sekund…', 2000),
+  },
+  {
+    caller:'Kasia (BFF) ☕', ava:'☕', bg:'rgba(255,107,53,0.18)',
+    body:'HEEJ!! Idziemy dziś na kawę? Nowa kawiarnia na Brackiej 😍',
+    accept_text:'Okej, wpadnę po 17! Zasłużona przerwa!',
+    accept_effect: () => { gainEnergy(); showToast('☕', 'Kawa z przyjaciółką — odzyskujesz życie! ❤️', 3000); },
+    decline_text:'Nie możesz. Kasia: „Dobra, innym razem! 🤗"',
+    decline_effect: () => {},
+  },
+];
+
+let _phoneActive  = false;
+let _currentCall  = null;
+let _phoneTimeout = null;
+
+function startPhoneSystem() { scheduleNextCall(); }
+
+function scheduleNextCall() {
+  clearTimeout(_phoneTimeout);
+  _phoneTimeout = setTimeout(tryRingPhone, 20000 + Math.random() * 65000);
+}
+
+function tryRingPhone() {
+  const missionOpen = document.getElementById('mission-overlay').classList.contains('open');
+  const simOpen     = document.getElementById('sim-overlay').classList.contains('open');
+  if (_phoneActive || missionOpen || simOpen) { scheduleNextCall(); return; }
+
+  _phoneActive  = true;
+  _currentCall  = CALLS[Math.floor(Math.random() * CALLS.length)];
+  const c       = _currentCall;
+  const ph      = document.getElementById('phone-call');
+
+  document.getElementById('ph-ava').textContent     = c.ava;
+  document.getElementById('ph-ava').style.background = c.bg;
+  document.getElementById('ph-name').textContent    = c.caller;
+  document.getElementById('ph-status').textContent  = 'Dzwoni…';
+  document.getElementById('ph-body').textContent    = c.body;
+
+  const te = document.getElementById('ph-task');
+  te.style.display = c.task ? 'block' : 'none';
+  if (c.task) te.textContent = c.task;
+
+  ph.classList.add('ringing', 'phone-shake');
+  setTimeout(() => ph.classList.remove('phone-shake'), 750);
+
+  clearTimeout(_phoneTimeout);
+  _phoneTimeout = setTimeout(() => { if (_phoneActive) declineCall(); }, 14000);
+}
+
+function acceptCall() {
+  if (!_phoneActive) return;
+  _phoneActive = false;
+  document.getElementById('phone-call').classList.remove('ringing');
+  clearTimeout(_phoneTimeout);
+  const c = _currentCall;
+  showToast('📞', c.accept_text, 5000);
+  if (c.accept_xp) addXP(c.accept_xp);
+  if (c.accept_effect) c.accept_effect();
+  scheduleNextCall();
+}
+
+function declineCall() {
+  if (!_phoneActive) return;
+  _phoneActive = false;
+  document.getElementById('phone-call').classList.remove('ringing');
+  clearTimeout(_phoneTimeout);
+  const c = _currentCall;
+  if (c.decline_text)   showToast('📵', c.decline_text, 3500);
+  if (c.decline_xp)     addXP(c.decline_xp);
+  if (c.decline_effect) c.decline_effect();
+  scheduleNextCall();
+}
+
+window.acceptCall  = acceptCall;
+window.declineCall = declineCall;
+</script>
+</body>
+</html>
